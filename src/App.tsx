@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useStore } from './store';
 import { BlockList } from './components/Blocks';
 import { Sidebar } from './components/Sidebar';
+import { SectionPager, SectionTabs, useCurrentSection } from './components/Sections';
 import { Preview } from './preview/Preview';
 import { Icon } from './components/Icon';
 import { download, slug } from './util/download';
@@ -30,6 +31,7 @@ export default function App() {
   };
   const doc = useStore((s) => s.doc);
   const update = useStore((s) => s.update);
+  const { current } = useCurrentSection();
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
   const [previewWidth, setPreviewWidth] = useState(() => {
@@ -117,8 +119,12 @@ export default function App() {
       </header>
       <Sidebar />
       <main className="editor" onMouseDown={(e) => { if (e.target === e.currentTarget) useStore.getState().selectBlock(null); }}>
+        <SectionTabs />
         <div className="editor-inner">
-          <BlockList blocks={doc.blocks} />
+          {current
+            ? <BlockList blocks={doc.blocks.slice(current.start, current.end)} offset={current.start} total={doc.blocks.length} />
+            : <BlockList blocks={doc.blocks} />}
+          <SectionPager />
         </div>
       </main>
       <div className="splitter" onMouseDown={startDrag} />

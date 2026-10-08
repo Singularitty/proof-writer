@@ -35,12 +35,15 @@ interface State {
   lastEditKey: string | null;
   lastEditTime: number;
   selectedBlock: string | null;
+  /** Section shown in the editor (id of its top-level H1, or PREAMBLE); null shows the whole document. */
+  section: string | null;
   insertTarget: InsertTarget | null;
 
   update: (f: (d: Draft<Doc>) => void, editKey?: string) => void;
   undo: () => void;
   redo: () => void;
   selectBlock: (id: string | null) => void;
+  setSection: (id: string | null) => void;
   setInsertTarget: (t: InsertTarget | null) => void;
   openDoc: (id: string) => void;
   newDoc: (sample?: boolean) => void;
@@ -83,6 +86,7 @@ export const useStore = create<State>((set, get) => ({
   lastEditKey: null,
   lastEditTime: 0,
   selectedBlock: null,
+  section: null,
   insertTarget: null,
 
   update: (f, editKey) => {
@@ -113,6 +117,7 @@ export const useStore = create<State>((set, get) => ({
     set({ doc: nxt, past: [...past, doc], future: future.slice(1), lastEditKey: null, index: persist(docId, nxt, index) });
   },
   selectBlock: (id) => set({ selectedBlock: id }),
+  setSection: (id) => set({ section: id }),
   setInsertTarget: (t) => set({ insertTarget: t }),
   openDoc: (id) => {
     const { docId, doc, index } = get();
@@ -120,7 +125,7 @@ export const useStore = create<State>((set, get) => ({
     const d = load<Doc>(DOC_KEY(id));
     if (!d) return;
     save('proof-writer:last', id);
-    set({ docId: id, doc: d, past: [], future: [], selectedBlock: null, index });
+    set({ docId: id, doc: d, past: [], future: [], selectedBlock: null, section: null, index });
   },
   newDoc: (sample) => {
     const { docId, doc, index } = get();
@@ -131,7 +136,7 @@ export const useStore = create<State>((set, get) => ({
     save(DOC_KEY(id), d);
     save(INDEX_KEY, nextIndex);
     save('proof-writer:last', id);
-    set({ docId: id, doc: d, index: nextIndex, past: [], future: [], selectedBlock: null });
+    set({ docId: id, doc: d, index: nextIndex, past: [], future: [], selectedBlock: null, section: null });
   },
   importDoc: (d) => {
     const { docId, doc, index } = get();
@@ -141,7 +146,7 @@ export const useStore = create<State>((set, get) => ({
     save(DOC_KEY(id), d);
     save(INDEX_KEY, nextIndex);
     save('proof-writer:last', id);
-    set({ docId: id, doc: d, index: nextIndex, past: [], future: [], selectedBlock: null });
+    set({ docId: id, doc: d, index: nextIndex, past: [], future: [], selectedBlock: null, section: null });
   },
   deleteDoc: (id) => {
     const { docId, index } = get();

@@ -90,9 +90,10 @@ export function ProseField({ value, onChange, placeholder, inline, className, st
 }
 
 /** A plain single-line text input that commits on every keystroke. */
-export function TextInput({ value, onChange, placeholder, className }: { value: string; onChange: (v: string) => void; placeholder?: string; className?: string }) {
+export function TextInput({ value, onChange, placeholder, className, autoFocus }: { value: string; onChange: (v: string) => void; placeholder?: string; className?: string; autoFocus?: boolean }) {
   return (
     <input
+      autoFocus={autoFocus}
       className={'textinput ' + (className ?? '')}
       value={value}
       placeholder={placeholder}

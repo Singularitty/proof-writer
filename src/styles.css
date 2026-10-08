@@ -348,3 +348,17 @@ table.grammar tr:hover td.alts .mini.add, table.grammar tr:focus-within td.alts 
 .case-head .mini { opacity: 0; }
 .case-head:hover .mini, .case-head:focus-within .mini { opacity: 1; }
 .topbar button:has(svg) { padding: 5px 7px; }
+
+/* Section tabs */
+.section-tabs {
+  position: sticky; top: 0; z-index: 5; display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
+  padding: 8px 16px; background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.section-tab { border: none; background: transparent; padding: 4px 10px; border-radius: 6px; color: var(--dim); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.section-tabs .section-tab:hover { background: var(--accent-soft); color: var(--ink); }
+.section-tabs .section-tab.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.section-num { font-variant-numeric: tabular-nums; opacity: 0.7; margin-right: 6px; }
+.section-add { border-style: dashed; color: var(--accent); padding: 3px 10px; margin-left: 4px; }
+.section-hint { color: var(--dim); font-size: 13px; }
+.section-pager { display: flex; justify-content: space-between; gap: 12px; margin: 32px 0 0 82px; }
+.section-pager button { color: var(--accent); }

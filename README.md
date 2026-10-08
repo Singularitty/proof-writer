@@ -41,7 +41,12 @@ unsigned, so the first launch needs right-click → Open.
 
 ## Writing
 
-The document is a list of blocks. Hover between blocks and click **＋** to insert one.
+The document is a list of blocks. Click **＋** between blocks to insert one.
+
+**Sections.** Every top-level H1 heading starts a section. The tabs above the
+editor show one section at a time (or **All** for the whole document), and
+**＋ Section** adds a new one after the current section. Clicking an outline item
+jumps to its section. The preview and exports always cover the whole document.
 
 | Block | What it is |
 | --- | --- |

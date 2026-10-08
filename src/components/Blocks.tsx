@@ -37,13 +37,16 @@ export function makeBlock(type: BlockType): Block {
 
 // ---------- list of blocks ----------
 
-export function BlockList({ blocks, nested }: { blocks: Block[]; nested?: boolean }) {
+/** `offset`/`total` place a slice of a longer list (one section of the document), so move buttons stay correct. */
+export function BlockList({ blocks, nested, offset = 0, total }: { blocks: Block[]; nested?: boolean; offset?: number; total?: number }) {
+  // Inside a section, inserting above its heading would land in the previous section.
+  const leadingInsert = offset === 0 || !(blocks[0]?.type === 'heading' && blocks[0].level === 1);
   return (
     <div className={'block-list' + (nested ? ' nested' : '')}>
       {blocks.map((b, i) => (
         <div key={b.id}>
-          {i === 0 && <InsertBar before={b.id} nested={nested} />}
-          <BlockFrame block={b} index={i} count={blocks.length} nested={nested} />
+          {i === 0 && leadingInsert && <InsertBar before={b.id} nested={nested} />}
+          <BlockFrame block={b} index={offset + i} count={total ?? blocks.length} nested={nested} />
           <InsertBar after={b.id} nested={nested} />
         </div>
       ))}
@@ -142,7 +145,7 @@ function BlockFrame({ block, index, count, nested }: { block: Block; index: numb
 
 function BlockEditor({ block, fresh }: { block: Block; fresh: boolean }) {
   switch (block.type) {
-    case 'heading': return <HeadingEditor b={block} />;
+    case 'heading': return <HeadingEditor b={block} fresh={fresh} />;
     case 'text': return <ProseField value={block.text} onChange={(v) => updateBlock<'text'>(block.id, (b) => { b.text = v; }, 't' + block.id)} startEditing={fresh && !block.text} />;
     case 'grammar': return <GrammarEditor b={block} />;
     case 'rules': return <RulesEditor b={block} />;
@@ -155,13 +158,13 @@ function BlockEditor({ block, fresh }: { block: Block; fresh: boolean }) {
 
 type B<T extends BlockType> = Extract<Block, { type: T }>;
 
-function HeadingEditor({ b }: { b: B<'heading'> }) {
+function HeadingEditor({ b, fresh }: { b: B<'heading'>; fresh: boolean }) {
   return (
     <div className={'heading-editor h' + b.level}>
       <select value={b.level} onChange={(e) => updateBlock<'heading'>(b.id, (x) => { x.level = +e.target.value as 1 | 2 | 3; })}>
         <option value={1}>H1</option><option value={2}>H2</option><option value={3}>H3</option>
       </select>
-      <TextInput value={b.text} placeholder="Heading" onChange={(v) => updateBlock<'heading'>(b.id, (x) => { x.text = v; }, 'h' + b.id)} />
+      <TextInput value={b.text} placeholder="Heading" autoFocus={fresh && !b.text} onChange={(v) => updateBlock<'heading'>(b.id, (x) => { x.text = v; }, 'h' + b.id)} />
     </div>
   );
 }

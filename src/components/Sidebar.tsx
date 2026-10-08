@@ -43,7 +43,11 @@ function Outline() {
     <ul className="outline">
       {items.map((it) => (
         <li key={it.id} className={it.cls}>
-          <a onClick={() => { document.getElementById('block-' + it.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); useStore.getState().selectBlock(it.id); }}>{it.text}</a>
+          <a onClick={() => {
+            // Selecting first lets the editor switch to the section holding this block before scrolling to it.
+            useStore.getState().selectBlock(it.id);
+            setTimeout(() => document.getElementById('block-' + it.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+          }}>{it.text}</a>
         </li>
       ))}
     </ul>
