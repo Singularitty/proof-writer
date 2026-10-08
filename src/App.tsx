@@ -6,7 +6,26 @@ import { Preview } from './preview/Preview';
 import { download, slug } from './util/download';
 import type { Doc } from './model/types';
 
+type Theme = 'system' | 'light' | 'dark';
+const THEME_ICON: Record<Theme, string> = { system: '◐', light: '☀', dark: '☾' };
+
+export function applyTheme(t: Theme) {
+  if (t === 'system') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+}
+
+export function savedTheme(): Theme {
+  try { return (localStorage.getItem('proof-writer:theme') as Theme) || 'system'; } catch { return 'system'; }
+}
+
 export default function App() {
+  const [theme, setTheme] = useState<Theme>(savedTheme);
+  const cycleTheme = () => {
+    const next: Theme = theme === 'system' ? 'dark' : theme === 'dark' ? 'light' : 'system';
+    setTheme(next);
+    applyTheme(next);
+    try { localStorage.setItem('proof-writer:theme', next); } catch { /* ignore */ }
+  };
   const doc = useStore((s) => s.doc);
   const update = useStore((s) => s.update);
   const canUndo = useStore((s) => s.past.length > 0);
@@ -69,6 +88,7 @@ export default function App() {
         <input className="doc-title" value={doc.title} onChange={(e) => update((d) => { d.title = e.target.value; }, 'title')} placeholder="Document title" />
         <input className="doc-author" value={doc.author} onChange={(e) => update((d) => { d.author = e.target.value; }, 'author')} placeholder="Author" />
         <span className="grow" />
+        <button className="theme-toggle" onClick={cycleTheme} title={`Theme: ${theme} (click to change)`}>{THEME_ICON[theme]}</button>
         <button onClick={() => useStore.getState().undo()} disabled={!canUndo} title="Undo (Ctrl+Z)">↶</button>
         <button onClick={() => useStore.getState().redo()} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">↷</button>
         <button onClick={() => fileInput.current?.click()} title="Open a .json document">Open .json</button>
