@@ -75,7 +75,7 @@ function InsertBar({ before, after, nested, emptyListOf }: { before?: string; af
   const types = nested ? BLOCK_TYPES.filter((t) => t.type !== 'heading') : BLOCK_TYPES;
   return (
     <div className={'insert-bar' + (open ? ' open' : '')}>
-      <button className="insert-btn" onClick={() => setOpen(!open)} title="Insert block">＋</button>
+      <button className="insert-btn" onClick={() => setOpen(!open)} title="Insert block" aria-label="Insert block">＋</button>
       {open && (
         <div className="insert-menu" onMouseLeave={() => setOpen(false)}>
           {types.map((t) => (
@@ -127,10 +127,10 @@ function BlockFrame({ block, index, count, nested }: { block: Block; index: numb
       <div className="block-gutter">
         <span className="block-type">{TYPE_NAMES[block.type]}</span>
         <div className="block-actions">
-          <button onClick={() => move(-1)} disabled={index === 0} title="Move up">↑</button>
-          <button onClick={() => move(1)} disabled={index === count - 1} title="Move down">↓</button>
-          <button onClick={duplicate} title="Duplicate">⧉</button>
-          <button className="danger" onClick={remove} title="Delete block">✕</button>
+          <button onClick={() => move(-1)} disabled={index === 0} title="Move up" aria-label="Move up">↑</button>
+          <button onClick={() => move(1)} disabled={index === count - 1} title="Move down" aria-label="Move down">↓</button>
+          <button onClick={duplicate} title="Duplicate" aria-label="Duplicate">⧉</button>
+          <button className="danger" onClick={remove} title="Delete block" aria-label="Delete block">✕</button>
         </div>
       </div>
       <div className="block-body">
@@ -187,14 +187,14 @@ function GrammarEditor({ b }: { b: B<'grammar'> }) {
                   <span key={ai} className="alt">
                     {ai > 0 && <span className="bar">|</span>}
                     <MathField value={a} placeholder="production" onChange={(v) => row(r.id, (y) => { y.alternatives[ai] = v; }, `ga${r.id}${ai}`)} />
-                    <button className="mini" title="Remove alternative" onClick={() => row(r.id, (y) => { y.alternatives.splice(ai, 1); })}>×</button>
+                    <button className="mini" title="Remove alternative" aria-label="Remove alternative" onClick={() => row(r.id, (y) => { y.alternatives.splice(ai, 1); })}>×</button>
                   </span>
                 ))}
                 <button className="mini add" onClick={() => row(r.id, (y) => { y.alternatives.push(''); })}>＋ alt</button>
               </td>
               <td className="row-actions">
-                <button className="mini" disabled={ri === 0} onClick={() => set((x) => { [x.rows[ri - 1], x.rows[ri]] = [x.rows[ri], x.rows[ri - 1]]; })}>↑</button>
-                <button className="mini" onClick={() => set((x) => { x.rows.splice(ri, 1); })}>×</button>
+                <button aria-label="Move up" title="Move up" className="mini" disabled={ri === 0} onClick={() => set((x) => { [x.rows[ri - 1], x.rows[ri]] = [x.rows[ri], x.rows[ri - 1]]; })}>↑</button>
+                <button aria-label="Remove" title="Remove" className="mini" onClick={() => set((x) => { x.rows.splice(ri, 1); })}>×</button>
               </td>
             </tr>
           ))}
@@ -269,7 +269,7 @@ function RuleCard({ rule, editing, onEdit, set, remove, move, duplicate }: {
             {rule.premises.map((p, i) => (
               <span key={i} className="premise">
                 <MathField value={p} placeholder="premise" startEditing={!p && i === rule.premises.length - 1 && !rule.conclusion} onChange={(v) => set((r) => { r.premises[i] = v; }, `rp${rule.id}${i}`)} />
-                <button className="mini" onClick={() => set((r) => { r.premises.splice(i, 1); })}>×</button>
+                <button aria-label="Remove" title="Remove" className="mini" onClick={() => set((r) => { r.premises.splice(i, 1); })}>×</button>
               </span>
             ))}
             <button className="mini add" onClick={() => set((r) => { r.premises.push(''); })}>＋ premise</button>
@@ -286,8 +286,8 @@ function RuleCard({ rule, editing, onEdit, set, remove, move, duplicate }: {
         <div className="preview-row"><RuleView rule={rule} /></div>
         <div className="row actions">
           <button onClick={onEdit} className="primary">Done</button>
-          <button onClick={() => move(-1)}>←</button>
-          <button onClick={() => move(1)}>→</button>
+          <button aria-label="Move left" title="Move left" onClick={() => move(-1)}>←</button>
+          <button aria-label="Move right" title="Move right" onClick={() => move(1)}>→</button>
           <button onClick={duplicate}>Duplicate</button>
           <button className="danger" onClick={remove}>Delete</button>
         </div>
@@ -324,13 +324,17 @@ function TheoremEditor({ b, fresh }: { b: B<'theorem'>; fresh: boolean }) {
           <span className="lbl">label</span>
           <TextInput value={b.label} placeholder="lem:subst" onChange={(v) => set((x) => { x.label = v; }, 'tl' + b.id)} />
         </span>
-        <button className="mini" onClick={() => set((x) => { x.collapsed = !x.collapsed; })}>{b.collapsed ? 'Show proof' : 'Hide proof'}</button>
       </div>
       <ProseField className="thm-statement" value={b.statement} placeholder="Statement, e.g. If $\Gamma \vdash e : \tau$ and … then …" onChange={(v) => set((x) => { x.statement = v; }, 'ts' + b.id)} startEditing={fresh && !b.statement} />
-      {!b.collapsed && b.kind !== 'definition' && (
-        <div className="proof">
-          <div className="proof-label"><em>Proof.</em> {!b.proof && <button className="mini" onClick={() => set((x) => { x.proof = [{ id: uid(), type: 'text', text: '' }]; })}>＋ Add proof</button>}</div>
-          {b.proof && <NestedBlocks owner={b.id} blocks={b.proof} path="proof" />}
+      {b.kind !== 'definition' && (
+        <div className={'proof' + (b.collapsed ? ' collapsed' : '')}>
+          <div className="proof-label">
+            <button className="link" aria-expanded={!b.collapsed} onClick={() => set((x) => { x.collapsed = !x.collapsed; })}>
+              <span className="chev">{b.collapsed ? '▸' : '▾'}</span> <em>Proof.</em>
+            </button>
+            {!b.proof && <button className="mini add" onClick={() => set((x) => { x.proof = [{ id: uid(), type: 'text', text: '' }]; })}>＋ Add proof</button>}
+          </div>
+          {!b.collapsed && b.proof && <NestedBlocks owner={b.id} blocks={b.proof} path="proof" />}
         </div>
       )}
     </div>
@@ -376,8 +380,8 @@ function CasesEditor({ b }: { b: B<'cases'> }) {
             <strong>Case</strong>
             <ProseField inline value={c.title} placeholder="[[T-App]]" onChange={(v) => set((x) => { x.cases[i].title = v; }, 'ct' + c.id)} />
             <span className="grow" />
-            <button className="mini" disabled={i === 0} onClick={() => set((x) => { [x.cases[i - 1], x.cases[i]] = [x.cases[i], x.cases[i - 1]]; })}>↑</button>
-            <button className="mini" onClick={() => set((x) => { x.cases.splice(i, 1); })}>×</button>
+            <button aria-label="Move up" title="Move up" className="mini" disabled={i === 0} onClick={() => set((x) => { [x.cases[i - 1], x.cases[i]] = [x.cases[i], x.cases[i - 1]]; })}>↑</button>
+            <button aria-label="Remove" title="Remove" className="mini" onClick={() => set((x) => { x.cases.splice(i, 1); })}>×</button>
           </div>
           <div className="case-body">
             <NestedBlocks owner={b.id} blocks={c.body} path="case" caseId={c.id} />

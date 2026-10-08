@@ -69,10 +69,11 @@ function Snippets() {
   };
   return (
     <div className="snippets">
-      <p className="help">
-        <strong>Math snippets</strong> are LaTeX macros: type <code>\name</code> in any math field (with autocomplete). Use <code>#1</code>, <code>#2</code> for arguments. They become <code>\newcommand</code>s in the LaTeX export.
-        <br /><strong>Text snippets</strong> expand <code>{'{{name}}'}</code> in prose. Click a snippet to insert it at the cursor.
-      </p>
+      <details className="help">
+        <summary>Type <code>\name</code> in math or <code>{'{{name}}'}</code> in text. Click to insert.</summary>
+        <p><strong>Math snippets</strong> are LaTeX macros with arguments <code>#1</code>, <code>#2</code>, …, autocompleted in every math field. They become <code>\newcommand</code>s in the LaTeX export.</p>
+        <p><strong>Text snippets</strong> expand <code>{'{{name}}'}</code> in prose.</p>
+      </details>
       {snippets.map((s) =>
         editing === s.id ? (
           <div key={s.id} className="snippet editing">

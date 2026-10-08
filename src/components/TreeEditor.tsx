@@ -147,24 +147,29 @@ export function TreeEditor({ blockId, root, unknowns }: Props) {
       <div className="tree-toolbar" onClick={(e) => e.stopPropagation()}>
         {sel ? (
           <>
-            <button onClick={() => setEditing(sel.node.id)} title="Edit judgment (Enter)">✎ Judgment</button>
-            <button onClick={() => addPremise(sel.node.id)} title="Add premise above (P)">＋ Premise</button>
             <div className="picker-wrap">
-              <button className={picker ? 'active' : ''} onClick={() => setPicker(!picker)} title="Apply a rule (R)">⊢ Apply rule ▾</button>
+              <button className={'primary-soft' + (picker ? ' active' : '')} onClick={() => setPicker(!picker)} title="Apply a rule (R)" aria-label="Apply a rule (R)" aria-expanded={picker}>⊢ Apply rule</button>
               {picker && <RulePicker judgment={sel.node.judgment} unknowns={unknowns} onPick={apply} onClose={() => setPicker(false)} />}
             </div>
-            <button onClick={() => setEditingLabel(sel.node.id)} title="Rule name shown next to the line (N)">Label</button>
-            <button onClick={() => extendBelow(sel.node.id)} title="Insert a new conclusion below (B)">⤓ Below</button>
-            <span className="sep" />
-            <button className={sel.node.leaf ? 'active' : ''} onClick={() => toggle(sel.node.id, 'leaf')} title="Mark as an assumption or side condition (no line, not an open goal)">Leaf</button>
-            <button className={sel.node.elided ? 'active' : ''} onClick={() => toggle(sel.node.id, 'elided')} title="Elide the derivation above (⋮)">⋮</button>
-            <button onClick={() => move(sel.node.id, -1)} disabled={!sel.parent} title="Move left">←</button>
-            <button onClick={() => move(sel.node.id, 1)} disabled={!sel.parent} title="Move right">→</button>
-            <button onClick={() => duplicate(sel.node.id)} disabled={!sel.parent} title="Duplicate subtree">⧉</button>
-            <button className="danger" onClick={() => remove(sel.node.id)} title="Delete subtree (Del)">✕</button>
+            <div className="btn-group">
+              <button onClick={() => addPremise(sel.node.id)} title="Add premise above (P)" aria-label="Add premise above (P)">＋ Premise</button>
+              <button onClick={() => extendBelow(sel.node.id)} title="Insert a new conclusion below (B)" aria-label="Insert a new conclusion below (B)">＋ Below</button>
+            </div>
+            <div className="btn-group">
+              <button onClick={() => setEditing(sel.node.id)} title="Edit judgment (Enter)" aria-label="Edit judgment (Enter)">Edit</button>
+              <button onClick={() => setEditingLabel(sel.node.id)} title="Rule name shown next to the line (N)" aria-label="Rule name shown next to the line (N)">Label</button>
+              <button className={sel.node.leaf ? 'active' : ''} aria-pressed={!!sel.node.leaf} onClick={() => toggle(sel.node.id, 'leaf')} title="Mark as an assumption or side condition (no line, not an open goal)" aria-label="Mark as side condition">Leaf</button>
+              <button className={sel.node.elided ? 'active' : ''} aria-pressed={!!sel.node.elided} onClick={() => toggle(sel.node.id, 'elided')} title="Elide the derivation above (⋮)" aria-label="Elide the derivation above">⋮</button>
+            </div>
+            <div className="btn-group">
+              <button onClick={() => move(sel.node.id, -1)} disabled={!sel.parent} title="Move left" aria-label="Move left">←</button>
+              <button onClick={() => move(sel.node.id, 1)} disabled={!sel.parent} title="Move right" aria-label="Move right">→</button>
+              <button onClick={() => duplicate(sel.node.id)} disabled={!sel.parent} title="Duplicate subtree" aria-label="Duplicate subtree">⧉</button>
+              <button className="danger" onClick={() => remove(sel.node.id)} title="Delete subtree (Del)" aria-label="Delete subtree (Del)">✕</button>
+            </div>
           </>
         ) : (
-          <span className="hint">Click a judgment to select it. Keys: Enter edit · P premise · R apply rule · N label · B below · arrows move.</span>
+          <span className="hint">Select a judgment to build the tree. <kbd>R</kbd> apply rule · <kbd>P</kbd> premise · <kbd>Enter</kbd> edit</span>
         )}
         <span className="grow" />
         <span className={'open-goals ' + (open ? 'some' : 'none')}>{open ? `${open} open goal${open > 1 ? 's' : ''}` : 'complete'}</span>
@@ -183,7 +188,8 @@ export function TreeEditor({ blockId, root, unknowns }: Props) {
           selected={selected}
           editing={editing}
           editingLabel={editingLabel}
-          onSelect={(id) => { setSelected(id); setPicker(false); box.current?.focus(); }}
+          onSelect={(id) => { setSelected(id); setPicker(false); }}
+          onFocusSelect={(id) => { setSelected(id); setPicker(false); }}
           onEdit={setEditing}
           onDoneEditing={() => { setEditing(null); box.current?.focus(); }}
           onDoneLabel={() => { setEditingLabel(null); box.current?.focus(); }}
@@ -219,6 +225,7 @@ interface NodeViewProps {
   editing: string | null;
   editingLabel: string | null;
   onSelect: (id: string) => void;
+  onFocusSelect: (id: string) => void;
   onEdit: (id: string) => void;
   onEditLabel: (id: string) => void;
   onDoneEditing: () => void;
@@ -237,6 +244,11 @@ function NodeView(p: NodeViewProps) {
   const concl = (
     <div
       className={'pt-concl' + (isSel ? ' sel' : '') + (isOpen ? ' open' : '')}
+      tabIndex={p.editing === node.id ? -1 : 0}
+      role="button"
+      aria-pressed={isSel}
+      aria-label={(node.judgment || 'empty judgment') + (node.rule ? ` by ${node.rule}` : '') + (isOpen ? ', open goal' : '')}
+      onFocus={() => { if (!isSel) p.onFocusSelect(node.id); }}
       onClick={(e) => { e.stopPropagation(); p.onSelect(node.id); }}
       onDoubleClick={(e) => { e.stopPropagation(); p.onEdit(node.id); }}
     >
@@ -284,7 +296,7 @@ function NodeView(p: NodeViewProps) {
           node.children.map((c) => <NodeView key={c.id} {...p} node={c} isRoot={false} />)
         )}
         {isSel && !node.elided && (
-          <button className="pt-add" title="Add premise" onClick={(e) => { e.stopPropagation(); p.addPremise(node.id); }}>＋</button>
+          <button className="pt-add" title="Add premise" aria-label="Add premise" onClick={(e) => { e.stopPropagation(); p.addPremise(node.id); }}>＋</button>
         )}
       </div>
       <div className={'pt-line' + (node.elided ? ' none' : '')} />

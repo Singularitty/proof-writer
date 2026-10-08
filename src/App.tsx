@@ -3,11 +3,12 @@ import { useStore } from './store';
 import { BlockList } from './components/Blocks';
 import { Sidebar } from './components/Sidebar';
 import { Preview } from './preview/Preview';
+import { Icon } from './components/Icon';
 import { download, slug } from './util/download';
 import type { Doc } from './model/types';
 
 type Theme = 'system' | 'light' | 'dark';
-const THEME_ICON: Record<Theme, string> = { system: '◐', light: '☀', dark: '☾' };
+const THEME_ICON = { system: 'auto', light: 'sun', dark: 'moon' } as const;
 
 export function applyTheme(t: Theme) {
   if (t === 'system') delete document.documentElement.dataset.theme;
@@ -88,12 +89,12 @@ export default function App() {
         <input className="doc-title" value={doc.title} onChange={(e) => update((d) => { d.title = e.target.value; }, 'title')} placeholder="Document title" />
         <input className="doc-author" value={doc.author} onChange={(e) => update((d) => { d.author = e.target.value; }, 'author')} placeholder="Author" />
         <span className="grow" />
-        <button className="theme-toggle" onClick={cycleTheme} title={`Theme: ${theme} (click to change)`}>{THEME_ICON[theme]}</button>
-        <button onClick={() => useStore.getState().undo()} disabled={!canUndo} title="Undo (Ctrl+Z)">↶</button>
-        <button onClick={() => useStore.getState().redo()} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">↷</button>
-        <button onClick={() => fileInput.current?.click()} title="Open a .json document">Open .json</button>
+        <button className="theme-toggle" onClick={cycleTheme} title={`Theme: ${theme} (click to change)`} aria-label={`Theme: ${theme}`}><Icon name={THEME_ICON[theme]} /></button>
+        <button onClick={() => useStore.getState().undo()} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)"><Icon name="undo" /></button>
+        <button onClick={() => useStore.getState().redo()} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo (Ctrl+Shift+Z)"><Icon name="redo" /></button>
+        <button onClick={() => fileInput.current?.click()} title="Open a .json document" aria-label="Open a .json document">Open .json</button>
         <input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importJson(f); e.target.value = ''; }} />
-        <button onClick={() => download(`${slug(doc.title)}.proof.json`, JSON.stringify(doc, null, 2), 'application/json')} title="Save the document as JSON (Ctrl+S)">Save .json</button>
+        <button onClick={() => download(`${slug(doc.title)}.proof.json`, JSON.stringify(doc, null, 2), 'application/json')} title="Save the document as JSON (Ctrl+S)" aria-label="Save the document as JSON (Ctrl+S)">Save .json</button>
         <span className="picker-wrap">
           <button onClick={() => setShowSettings(!showSettings)}>Settings</button>
           {showSettings && (
