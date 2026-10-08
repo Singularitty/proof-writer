@@ -20,6 +20,25 @@ It has to be served over HTTP, not opened as a file. Pushing to `main` deploys i
 to GitHub Pages via `.github/workflows/pages.yml` (enable Pages with source
 "GitHub Actions" in the repository settings).
 
+### Desktop app
+
+The same app also runs as an Electron desktop app, where documents are real
+files: **Open** (Ctrl+O) and **Save** (Ctrl+S) use native dialogs, Save writes
+back to the file you opened, Ctrl+Shift+S is Save As, and PDF/`.typ`/`.tex`
+exports ask where to save. Open PDF hands the PDF to your system viewer. The
+browser-storage autosave and the Documents tab still work as before.
+
+```sh
+npm run electron:dev     # build and launch the desktop app
+npm run electron:build   # installers for the current OS, in release/
+```
+
+`electron:build` makes an AppImage and `.deb` on Linux, a `.dmg` on macOS and
+an installer `.exe` on Windows. To get all three without the other machines,
+run the **Desktop builds** workflow from the repository's Actions tab (or push
+a `v*` tag, which also attaches them to a GitHub release). The macOS build is
+unsigned, so the first launch needs right-click → Open.
+
 ## Writing
 
 The document is a list of blocks. Hover between blocks and click **＋** to insert one.
@@ -100,5 +119,7 @@ Source layout:
 * `src/export` — prose format, Typst and LaTeX exporters
 * `src/components` — the editor UI (React)
 * `src/preview` — Typst compiler worker and SVG preview
+* `electron` — desktop shell: window, menu, native file dialogs (`main.cjs`),
+  and the `window.desktop` bridge (`preload.cjs`)
 * `public/fonts` — New Computer Modern (text and math) and DejaVu Sans Mono, from
   [typst-assets](https://github.com/typst/typst-assets)

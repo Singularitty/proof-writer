@@ -4,6 +4,7 @@ import { exportTypst } from '../export/typst';
 import { exportLatex } from '../export/latex';
 import { compileTypst, vectorToSvg } from './compile';
 import { download, slug } from '../util/download';
+import { desktop } from '../util/desktop';
 
 type Tab = 'pdf' | 'typst' | 'latex';
 
@@ -51,6 +52,12 @@ export function Preview() {
     else alert('Typst error:\n' + r.diagnostics.join('\n'));
   };
   const openPdf = async () => {
+    if (desktop) {
+      const r = await compileTypst(exportTypst(doc).source, 'pdf');
+      if (!r.ok) { alert('Typst error:\n' + r.diagnostics.join('\n')); return; }
+      desktop.openPdf(name, r.data as Uint8Array).catch((e) => alert('Could not open the PDF: ' + e));
+      return;
+    }
     const w = window.open('', '_blank');
     const r = await compileTypst(exportTypst(doc).source, 'pdf');
     if (!r.ok) { w?.close(); alert('Typst error:\n' + r.diagnostics.join('\n')); return; }

@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { Preview } from './preview/Preview';
 import { Icon } from './components/Icon';
 import { download, slug } from './util/download';
+import { desktop, docFilePath, setDocFilePath } from './util/desktop';
 import type { Doc } from './model/types';
 
 type Theme = 'system' | 'light' | 'dark';
@@ -49,12 +50,17 @@ export default function App() {
         useStore.getState().redo();
       } else if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        const d = useStore.getState().doc;
-        download(`${slug(d.title)}.proof.json`, JSON.stringify(d, null, 2), 'application/json');
+        saveDoc(e.shiftKey);
+      } else if (mod && e.key.toLowerCase() === 'o' && desktop) {
+        e.preventDefault();
+        openDoc();
       }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // In the desktop app, the File menu and "Open with" route here.
+    const offMenu = desktop?.onMenu((c) => (c === 'open' ? openDoc() : saveDoc(c === 'save-as')));
+    desktop?.pendingOpen().then((f) => f && loadJson(f.text, f.path));
+    return () => { window.removeEventListener('keydown', onKey); offMenu?.(); };
   }, []);
 
   const startDrag = (e: React.MouseEvent) => {
@@ -71,17 +77,7 @@ export default function App() {
     window.addEventListener('mouseup', up);
   };
 
-  const importJson = async (f: File) => {
-    try {
-      const d = JSON.parse(await f.text()) as Doc;
-      if (!Array.isArray(d.blocks) || !Array.isArray(d.snippets)) throw new Error('not a proof-writer document');
-      d.settings ??= { paper: 'a4', fontSize: 11, numberTheorems: 'shared' };
-      useStore.getState().importDoc(d);
-    } catch (e) {
-      alert('Could not open that file: ' + (e instanceof Error ? e.message : e));
-    }
-  };
-
+  const importJson = async (f: File) => loadJson(await f.text());
   return (
     <div className="app" style={{ gridTemplateColumns: `260px 1fr 6px ${previewWidth}px` }}>
       <header className="topbar">
@@ -92,9 +88,9 @@ export default function App() {
         <button className="theme-toggle" onClick={cycleTheme} title={`Theme: ${theme} (click to change)`} aria-label={`Theme: ${theme}`}><Icon name={THEME_ICON[theme]} /></button>
         <button onClick={() => useStore.getState().undo()} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)"><Icon name="undo" /></button>
         <button onClick={() => useStore.getState().redo()} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo (Ctrl+Shift+Z)"><Icon name="redo" /></button>
-        <button onClick={() => fileInput.current?.click()} title="Open a .json document" aria-label="Open a .json document">Open .json</button>
+        <button onClick={() => (desktop ? openDoc() : fileInput.current?.click())} title="Open a .json document (Ctrl+O)" aria-label="Open a .json document">Open .json</button>
         <input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importJson(f); e.target.value = ''; }} />
-        <button onClick={() => download(`${slug(doc.title)}.proof.json`, JSON.stringify(doc, null, 2), 'application/json')} title="Save the document as JSON (Ctrl+S)" aria-label="Save the document as JSON (Ctrl+S)">Save .json</button>
+        <button onClick={() => saveDoc(false)} title="Save the document as JSON (Ctrl+S)" aria-label="Save the document as JSON (Ctrl+S)">Save .json</button>
         <span className="picker-wrap">
           <button onClick={() => setShowSettings(!showSettings)}>Settings</button>
           {showSettings && (
@@ -129,4 +125,39 @@ export default function App() {
       <Preview />
     </div>
   );
+}
+
+function loadJson(text: string, path?: string) {
+  try {
+    const d = JSON.parse(text) as Doc;
+    if (!Array.isArray(d.blocks) || !Array.isArray(d.snippets)) throw new Error('not a proof-writer document');
+    d.settings ??= { paper: 'a4', fontSize: 11, numberTheorems: 'shared' };
+    useStore.getState().importDoc(d);
+    if (path) setDocFilePath(useStore.getState().docId, path);
+  } catch (e) {
+    alert('Could not open that file: ' + (e instanceof Error ? e.message : e));
+  }
+}
+
+async function openDoc() {
+  try {
+    const f = await desktop?.openDocument();
+    if (f) loadJson(f.text, f.path);
+  } catch (e) {
+    alert('Could not open that file: ' + e);
+  }
+}
+
+/** Desktop: writes to the document's file (asking once for a path); browser: downloads it. */
+async function saveDoc(saveAs: boolean) {
+  const { doc, docId } = useStore.getState();
+  const name = `${slug(doc.title)}.proof.json`;
+  const text = JSON.stringify(doc, null, 2);
+  if (!desktop) { download(name, text, 'application/json'); return; }
+  try {
+    const p = await desktop.saveDocument(saveAs ? null : docFilePath(docId), text, name);
+    if (p) setDocFilePath(docId, p);
+  } catch (e) {
+    alert('Could not save: ' + e);
+  }
 }
