@@ -15,8 +15,10 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-`npm run build` produces a static site in `dist/` that can be hosted anywhere
-(GitHub Pages, Netlify, …). It has to be served over HTTP, not opened as a file.
+`npm run build` produces a static site in `dist/` that can be hosted anywhere.
+It has to be served over HTTP, not opened as a file. Pushing to `main` deploys it
+to GitHub Pages via `.github/workflows/pages.yml` (enable Pages with source
+"GitHub Actions" in the repository settings).
 
 ## Writing
 
