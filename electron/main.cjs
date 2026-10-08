@@ -22,6 +22,7 @@ function serveDist() {
 }
 
 const JSON_FILTERS = [{ name: 'Proof Writer document', extensions: ['json'] }];
+const OPEN_FILTERS = [{ name: 'Proof Writer document or Typst file', extensions: ['json', 'typ'] }, ...JSON_FILTERS, { name: 'Typst (import)', extensions: ['typ'] }];
 
 function createWindow(fileToOpen) {
   const win = new BrowserWindow({
@@ -61,7 +62,7 @@ ipcMain.handle('pending-open', async (e) => {
 
 ipcMain.handle('open-document', async (e) => {
   const win = BrowserWindow.fromWebContents(e.sender);
-  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: JSON_FILTERS });
+  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: OPEN_FILTERS });
   if (r.canceled || !r.filePaths[0]) return null;
   const p = r.filePaths[0];
   app.addRecentDocument(p);
@@ -121,7 +122,7 @@ function buildMenu() {
   ]));
 }
 
-const argFile = process.argv.slice(app.isPackaged ? 1 : 2).find((a) => a.endsWith('.json'));
+const argFile = process.argv.slice(app.isPackaged ? 1 : 2).find((a) => /\.(json|typ)$/.test(a));
 
 let pendingArg = argFile ? path.resolve(argFile) : null;
 app.on('open-file', (e, p) => { e.preventDefault(); if (app.isReady()) createWindow(p); else pendingArg = p; });

@@ -7,6 +7,7 @@ import { Preview } from './preview/Preview';
 import { Icon } from './components/Icon';
 import { download, slug } from './util/download';
 import { desktop, docFilePath, setDocFilePath } from './util/desktop';
+import { importTypst } from './import/typst';
 import type { Doc } from './model/types';
 
 type Theme = 'system' | 'light' | 'dark';
@@ -61,7 +62,7 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     // In the desktop app, the File menu and "Open with" route here.
     const offMenu = desktop?.onMenu((c) => (c === 'open' ? openDoc() : saveDoc(c === 'save-as')));
-    desktop?.pendingOpen().then((f) => f && loadJson(f.text, f.path));
+    desktop?.pendingOpen().then((f) => f && loadFile(f.text, f.path));
     return () => { window.removeEventListener('keydown', onKey); offMenu?.(); };
   }, []);
 
@@ -79,7 +80,7 @@ export default function App() {
     window.addEventListener('mouseup', up);
   };
 
-  const importJson = async (f: File) => loadJson(await f.text());
+  const importFile = async (f: File) => loadFile(await f.text(), undefined, f.name);
   return (
     <div className="app" style={{ gridTemplateColumns: `260px 1fr 6px ${previewWidth}px` }}>
       <header className="topbar">
@@ -90,8 +91,8 @@ export default function App() {
         <button className="theme-toggle" onClick={cycleTheme} title={`Theme: ${theme} (click to change)`} aria-label={`Theme: ${theme}`}><Icon name={THEME_ICON[theme]} /></button>
         <button onClick={() => useStore.getState().undo()} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)"><Icon name="undo" /></button>
         <button onClick={() => useStore.getState().redo()} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo (Ctrl+Shift+Z)"><Icon name="redo" /></button>
-        <button onClick={() => (desktop ? openDoc() : fileInput.current?.click())} title="Open a .json document (Ctrl+O)" aria-label="Open a .json document">Open .json</button>
-        <input ref={fileInput} type="file" accept=".json,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importJson(f); e.target.value = ''; }} />
+        <button onClick={() => (desktop ? openDoc() : fileInput.current?.click())} title="Open a .json document, or import a Typst .typ file (Ctrl+O)" aria-label="Open a document">Open…</button>
+        <input ref={fileInput} type="file" accept=".json,.typ,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ''; }} />
         <button onClick={() => saveDoc(false)} title="Save the document as JSON (Ctrl+S)" aria-label="Save the document as JSON (Ctrl+S)">Save .json</button>
         <span className="picker-wrap">
           <button onClick={() => setShowSettings(!showSettings)}>Settings</button>
@@ -133,6 +134,19 @@ export default function App() {
   );
 }
 
+/** Opens a saved .json document, or imports a Typst file as a new document. */
+function loadFile(text: string, path?: string, name = path ?? '') {
+  if (/\.typ$/i.test(name)) {
+    const { doc, warnings } = importTypst(text);
+    useStore.getState().importDoc(doc);
+    if (warnings.length) {
+      alert(`Imported with ${warnings.length} note${warnings.length > 1 ? 's' : ''}:\n\n` + warnings.slice(0, 20).map((w) => '• ' + w).join('\n') + (warnings.length > 20 ? '\n…' : ''));
+    }
+    return;
+  }
+  loadJson(text, path);
+}
+
 function loadJson(text: string, path?: string) {
   try {
     const d = JSON.parse(text) as Doc;
@@ -148,7 +162,7 @@ function loadJson(text: string, path?: string) {
 async function openDoc() {
   try {
     const f = await desktop?.openDocument();
-    if (f) loadJson(f.text, f.path);
+    if (f) loadFile(f.text, f.path);
   } catch (e) {
     alert('Could not open that file: ' + e);
   }

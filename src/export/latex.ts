@@ -16,7 +16,7 @@ export function exportLatex(doc: Doc): LatexExport {
   const out: string[] = [];
   out.push(`\\documentclass[${s.fontSize}pt,${s.paper === 'a4' ? 'a4paper' : 'letterpaper'}]{article}`);
   out.push('\\usepackage[margin=2.5cm]{geometry}');
-  out.push('\\usepackage{amsmath,amssymb,amsthm}');
+  out.push('\\usepackage{amsmath,amssymb,amsthm,mathtools}');
   out.push('\\usepackage{stmaryrd}');
   out.push('\\usepackage{mathpartir}');
   out.push('\\usepackage{hyperref}');

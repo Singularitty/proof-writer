@@ -148,6 +148,8 @@ class Conv {
   /** Convert a sequence of nodes. `inCall` means the result is a function argument. */
   seq(nodes: Node[], inCall: boolean): string {
     const parts: string[] = [];
+    /** Indices k where parts[k] and parts[k + 1] are joined without a space. */
+    const glue = new Set<number>();
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i];
       if (n.t === 'ws') continue;
@@ -184,9 +186,13 @@ class Conv {
         }
       }
       const s = this.node(n, inCall);
-      if (s !== '') parts.push(s);
+      if (s === '') continue;
+      // |x| written without spaces stays tight, so Typst pairs the bars like abs(x).
+      if (n.t === 'char' && n.v === '|' && i + 1 < nodes.length && nodes[i + 1].t !== 'ws') glue.add(parts.length);
+      if (n.t === 'char' && n.v === '|' && i > 0 && nodes[i - 1].t !== 'ws') glue.add(parts.length - 1);
+      parts.push(s);
     }
-    let out = parts.join(' ');
+    let out = parts.reduce((acc, p, k) => (k === 0 ? p : acc + (glue.has(k - 1) ? '' : ' ') + p), '');
     if (inCall) out = escapeForCall(out);
     return out;
   }

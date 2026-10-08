@@ -6,19 +6,33 @@ import { makeCtx, sanitizeLabel, type ExportCtx } from './context';
 import { expandTextSnippets, parseProse, type Inline } from './prose';
 
 export const TYPST_PREAMBLE = String.raw`// ---- proof-writer support code ----
-#let pw-rule(name: none, side: none, premises: (), conclusion) = context {
-  let prem = if premises.len() == 0 { none } else {
-    grid(columns: premises.len(), column-gutter: 1.6em, align: bottom, ..premises)
-  }
-  let pw = if prem == none { 0pt } else { measure(prem).width }
-  let cw = measure(conclusion).width
-  let w = calc.max(pw, cw) + 0.3em
+#let pw-rule(name: none, side: none, premises: (), conclusion) = box(layout(size => {
   let label = {
     if name != none { text(size: 0.85em, smallcaps(name)) }
     if side != none { h(0.4em); side }
   }
   let lw = measure(label).width
-  box(grid(
+  // Premises that don't fit side by side wrap onto several rows.
+  let gap = 1.6em.to-absolute()
+  let maxw = size.width - lw - 1em.to-absolute()
+  let rows = ()
+  let row = ()
+  let roww = 0pt
+  for p in premises {
+    let pw = measure(p).width
+    if row.len() > 0 and roww + gap + pw > maxw { rows.push(row); row = (); roww = 0pt }
+    roww = if row.len() == 0 { pw } else { roww + gap + pw }
+    row.push(p)
+  }
+  if row.len() > 0 { rows.push(row) }
+  let prem = if rows.len() == 0 { none } else {
+    grid(columns: 1, row-gutter: 0.6em, align: center + bottom,
+      ..rows.map(r => grid(columns: r.len(), column-gutter: gap, align: bottom, ..r)))
+  }
+  let pw = if prem == none { 0pt } else { measure(prem).width }
+  let cw = measure(conclusion).width
+  let w = calc.max(pw, cw) + 0.3em
+  grid(
     columns: (w, lw),
     column-gutter: 0.3em,
     row-gutter: 0.22em,
@@ -26,8 +40,8 @@ export const TYPST_PREAMBLE = String.raw`// ---- proof-writer support code ----
     line(length: w, stroke: 0.45pt),
     box(width: lw, height: 0pt, place(left + horizon, label)),
     align(center, conclusion), [],
-  ))
-}
+  )
+}))
 #let pw-leaf(conclusion) = box(conclusion)
 #let pw-elided(conclusion) = box(grid(align: center, row-gutter: 0.3em, $dots.v$, conclusion))
 #let pw-rules(judgment: none, ..rules) = block(width: 100%, above: 1.2em, below: 1.2em, {
