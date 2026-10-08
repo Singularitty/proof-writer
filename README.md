@@ -100,6 +100,27 @@ side conditions. Open goals are underlined in orange and counted in the toolbar.
 `[[lem:canonical]]` references a lemma by its label ("Lemma 1"); `[[T-App]]`
 typesets a rule name in small caps. Typing `[[` autocompletes.
 
+## Your documents
+
+Documents are saved in the browser as you type (local storage, per browser and
+site). The **Documents** tab lists them: click to open, double-click or ✎ to
+rename, ⧉ to duplicate, × to delete. If the browser refuses to save (storage
+full, private window), a red notice appears above the editor.
+
+### GitHub
+
+**GitHub…** in the top bar opens documents from a repository and commits them back:
+
+* **Open from GitHub**: enter `owner/repo` or paste a link to a repository,
+  folder or file, then pick a `.json` document or a `.typ` file (imported).
+* **Commit to GitHub**: commits the open document as a `.json` document, or as
+  its Typst or LaTeX export. A document opened from GitHub defaults to the same
+  file, and the commit is refused if the file changed on GitHub since.
+
+Public repositories open without signing in. Private repositories and commits
+need a fine-grained personal access token with *Contents: Read and write*; it
+is stored only in this browser and sent only to `api.github.com`.
+
 ## Importing Typst
 
 **Open…** also accepts a `.typ` file and imports it as a new document:

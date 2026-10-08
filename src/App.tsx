@@ -7,7 +7,8 @@ import { Preview } from './preview/Preview';
 import { Icon } from './components/Icon';
 import { download, slug } from './util/download';
 import { desktop, docFilePath, setDocFilePath } from './util/desktop';
-import { importTypst } from './import/typst';
+import { loadFile } from './util/files';
+import { GitHubDialog } from './components/GitHubDialog';
 import type { Doc } from './model/types';
 
 type Theme = 'system' | 'light' | 'dark';
@@ -33,6 +34,8 @@ export default function App() {
   const doc = useStore((s) => s.doc);
   const update = useStore((s) => s.update);
   const { current } = useCurrentSection();
+  const storageError = useStore((s) => s.storageError);
+  const githubDialog = useStore((s) => s.githubDialog);
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
   const [previewWidth, setPreviewWidth] = useState(() => {
@@ -94,6 +97,7 @@ export default function App() {
         <button onClick={() => (desktop ? openDoc() : fileInput.current?.click())} title="Open a .json document, or import a Typst .typ file (Ctrl+O)" aria-label="Open a document">Open…</button>
         <input ref={fileInput} type="file" accept=".json,.typ,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ''; }} />
         <button onClick={() => saveDoc(false)} title="Save the document as JSON (Ctrl+S)" aria-label="Save the document as JSON (Ctrl+S)">Save .json</button>
+        <button onClick={() => useStore.getState().setGithubDialog('commit')} title="Open documents from, or commit this one to, a GitHub repository">GitHub…</button>
         <span className="picker-wrap">
           <button onClick={() => setShowSettings(!showSettings)}>Settings</button>
           {showSettings && (
@@ -120,6 +124,7 @@ export default function App() {
       </header>
       <Sidebar />
       <main className="editor" onMouseDown={(e) => { if (e.target === e.currentTarget) useStore.getState().selectBlock(null); }}>
+        {storageError && <div className="storage-error" role="alert">{storageError}</div>}
         <SectionTabs />
         <div className="editor-inner">
           {current
@@ -130,33 +135,9 @@ export default function App() {
       </main>
       <div className="splitter" onMouseDown={startDrag} />
       <Preview />
+      {githubDialog && <GitHubDialog mode={githubDialog} onClose={() => useStore.getState().setGithubDialog(null)} />}
     </div>
   );
-}
-
-/** Opens a saved .json document, or imports a Typst file as a new document. */
-function loadFile(text: string, path?: string, name = path ?? '') {
-  if (/\.typ$/i.test(name)) {
-    const { doc, warnings } = importTypst(text);
-    useStore.getState().importDoc(doc);
-    if (warnings.length) {
-      alert(`Imported with ${warnings.length} note${warnings.length > 1 ? 's' : ''}:\n\n` + warnings.slice(0, 20).map((w) => '• ' + w).join('\n') + (warnings.length > 20 ? '\n…' : ''));
-    }
-    return;
-  }
-  loadJson(text, path);
-}
-
-function loadJson(text: string, path?: string) {
-  try {
-    const d = JSON.parse(text) as Doc;
-    if (!Array.isArray(d.blocks) || !Array.isArray(d.snippets)) throw new Error('not a proof-writer document');
-    d.settings ??= { paper: 'a4', fontSize: 11, numberTheorems: 'shared' };
-    useStore.getState().importDoc(d);
-    if (path) setDocFilePath(useStore.getState().docId, path);
-  } catch (e) {
-    alert('Could not open that file: ' + (e instanceof Error ? e.message : e));
-  }
 }
 
 async function openDoc() {

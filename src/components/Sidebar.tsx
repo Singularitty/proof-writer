@@ -124,23 +124,48 @@ const Math2 = globalThis.Math;
 function Docs() {
   const index = useStore((s) => s.index);
   const docId = useStore((s) => s.docId);
-  const { openDoc, newDoc, deleteDoc } = useStore.getState();
+  const { openDoc, newDoc, deleteDoc, renameDoc, duplicateDoc, setGithubDialog } = useStore.getState();
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
+  const shown = index.filter((m) => (m.title || 'Untitled').toLowerCase().includes(filter.toLowerCase()));
   return (
     <div className="docs">
       <div className="row">
-        <button onClick={() => newDoc(false)}>＋ New document</button>
+        <button onClick={() => newDoc(false)}>＋ New</button>
         <button onClick={() => newDoc(true)}>＋ STLC example</button>
       </div>
+      <div className="row">
+        <button onClick={() => setGithubDialog('open')}>Open from GitHub…</button>
+      </div>
+      {index.length > 6 && <input className="docs-filter" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter documents" />}
       <ul>
-        {index.map((m) => (
+        {shown.map((m) => (
           <li key={m.id} className={m.id === docId ? 'active' : ''}>
-            <a onClick={() => openDoc(m.id)}>{m.title || 'Untitled'}</a>
-            <span className="dim">{new Date(m.updated).toLocaleString()}</span>
-            <button className="mini danger" onClick={() => { if (confirm(`Delete "${m.title}"? This cannot be undone.`)) deleteDoc(m.id); }}>×</button>
+            {renaming === m.id ? (
+              <input
+                className="docs-rename" autoFocus defaultValue={m.title}
+                onBlur={(e) => { renameDoc(m.id, e.target.value.trim() || m.title); setRenaming(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(null); }}
+              />
+            ) : (
+              <a onClick={() => openDoc(m.id)} onDoubleClick={() => setRenaming(m.id)} title="Open (double-click to rename)">{m.title || 'Untitled'}</a>
+            )}
+            <span className="dim">
+              {m.github && <span className="gh-badge" title={`${m.github.owner}/${m.github.repo}: ${m.github.path} (${m.github.branch})`}>GitHub</span>}
+              {new Date(m.updated).toLocaleString()}
+            </span>
+            <span className="docs-actions">
+              <button className="mini" onClick={() => setRenaming(m.id)} title="Rename" aria-label="Rename">✎</button>
+              <button className="mini" onClick={() => duplicateDoc(m.id)} title="Duplicate" aria-label="Duplicate">⧉</button>
+              <button className="mini danger" onClick={() => { if (confirm(`Delete "${m.title}" from this browser? This cannot be undone.`)) deleteDoc(m.id); }} title="Delete" aria-label="Delete">×</button>
+            </span>
           </li>
         ))}
       </ul>
-      <p className="help">Documents are saved in this browser automatically. Use <em>Save .json</em> to back them up or move them to another machine.</p>
+      <p className="help">
+        Documents are saved in this browser as you type, and stay until you delete them or clear the site's data.
+        To keep a copy elsewhere, use <em>Save .json</em> or <em>GitHub…</em> to commit it to a repository.
+      </p>
     </div>
   );
 }

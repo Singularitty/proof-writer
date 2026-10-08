@@ -3,12 +3,19 @@ import { produce, type Draft } from 'immer';
 import type { Block, Doc } from './model/types';
 import { emptyDoc, sampleDoc } from './model/sample';
 import { uid } from './model/util';
+import type { GitHubSource } from './util/github';
 
 const INDEX_KEY = 'proof-writer:index';
 const DOC_KEY = (id: string) => `proof-writer:doc:${id}`;
 const MAX_HISTORY = 200;
 
-export interface DocMeta { id: string; title: string; updated: number }
+export interface DocMeta {
+  id: string;
+  title: string;
+  updated: number;
+  /** The GitHub file this document was opened from or last committed to. */
+  github?: GitHubSource;
+}
 
 function load<T>(key: string): T | null {
   try {
@@ -18,9 +25,26 @@ function load<T>(key: string): T | null {
     return null;
   }
 }
-function save(key: string, v: unknown) {
-  try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage full or unavailable */ }
+/** Writes to localStorage; on failure (storage full or blocked) flags it so the UI can warn. */
+function save(key: string, v: unknown): boolean {
+  try {
+    localStorage.setItem(key, JSON.stringify(v));
+    // (useStore isn't defined yet while the initial state is being built)
+    try { if (useStore.getState().storageError) useStore.setState({ storageError: null }); } catch { /* initialising */ }
+    return true;
+  } catch (e) {
+    const full = e instanceof DOMException && (e.name === 'QuotaExceededError' || e.code === 22);
+    setTimeout(() => useStore.setState({
+      storageError: full
+        ? 'Browser storage is full, so recent changes are not saved here. Save the document as .json, or delete old documents.'
+        : 'This browser is not letting the app save documents (private window or blocked storage). Save as .json to keep your work.',
+    }));
+    return false;
+  }
 }
+
+// Ask the browser not to evict our storage under pressure (best effort).
+try { void navigator.storage?.persist?.(); } catch { /* ignore */ }
 
 /** Something that can receive inserted text (the last focused math or prose field). */
 export interface InsertTarget { insert: (text: string) => void; kind: 'math' | 'prose' }
@@ -38,6 +62,10 @@ interface State {
   /** Section shown in the editor (id of its top-level H1, or PREAMBLE); null shows the whole document. */
   section: string | null;
   insertTarget: InsertTarget | null;
+  /** Set when saving to browser storage failed. */
+  storageError: string | null;
+  githubDialog: 'open' | 'commit' | null;
+  setGithubDialog: (m: 'open' | 'commit' | null) => void;
 
   update: (f: (d: Draft<Doc>) => void, editKey?: string) => void;
   undo: () => void;
@@ -47,8 +75,11 @@ interface State {
   setInsertTarget: (t: InsertTarget | null) => void;
   openDoc: (id: string) => void;
   newDoc: (sample?: boolean) => void;
-  importDoc: (d: Doc) => void;
+  importDoc: (d: Doc, meta?: Partial<DocMeta>) => void;
   deleteDoc: (id: string) => void;
+  renameDoc: (id: string, title: string) => void;
+  duplicateDoc: (id: string) => void;
+  setGithubSource: (id: string, src: GitHubSource | undefined) => void;
 }
 
 function initial(): { docId: string; doc: Doc; index: DocMeta[] } {
@@ -88,6 +119,9 @@ export const useStore = create<State>((set, get) => ({
   selectedBlock: null,
   section: null,
   insertTarget: null,
+  storageError: null,
+  githubDialog: null,
+  setGithubDialog: (m) => set({ githubDialog: m }),
 
   update: (f, editKey) => {
     const { doc, past, lastEditKey, lastEditTime, docId, index } = get();
@@ -138,11 +172,11 @@ export const useStore = create<State>((set, get) => ({
     save('proof-writer:last', id);
     set({ docId: id, doc: d, index: nextIndex, past: [], future: [], selectedBlock: null, section: null });
   },
-  importDoc: (d) => {
+  importDoc: (d, meta) => {
     const { docId, doc, index } = get();
     save(DOC_KEY(docId), doc);
     const id = uid();
-    const nextIndex = [{ id, title: d.title, updated: Date.now() }, ...index];
+    const nextIndex = [{ id, title: d.title, updated: Date.now(), ...meta }, ...index];
     save(DOC_KEY(id), d);
     save(INDEX_KEY, nextIndex);
     save('proof-writer:last', id);
@@ -158,6 +192,27 @@ export const useStore = create<State>((set, get) => ({
       if (nextIndex.length) get().openDoc(nextIndex[0].id);
       else get().newDoc(false);
     }
+  },
+  renameDoc: (id, title) => {
+    if (id === get().docId) { get().update((d) => { d.title = title; }, 'title'); return; }
+    const d = load<Doc>(DOC_KEY(id));
+    if (!d) return;
+    d.title = title;
+    save(DOC_KEY(id), d);
+    const nextIndex = get().index.map((m) => (m.id === id ? { ...m, title } : m));
+    save(INDEX_KEY, nextIndex);
+    set({ index: nextIndex });
+  },
+  duplicateDoc: (id) => {
+    const { docId, doc } = get();
+    const src = id === docId ? doc : load<Doc>(DOC_KEY(id));
+    if (!src) return;
+    get().importDoc({ ...structuredClone(src), title: `${src.title} (copy)` });
+  },
+  setGithubSource: (id, src) => {
+    const nextIndex = get().index.map((m) => (m.id === id ? { ...m, github: src } : m));
+    save(INDEX_KEY, nextIndex);
+    set({ index: nextIndex });
   },
 }));
 
