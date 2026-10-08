@@ -100,6 +100,19 @@ side conditions. Open goals are underlined in orange and counted in the toolbar.
 `[[lem:canonical]]` references a lemma by its label ("Lemma 1"); `[[T-App]]`
 typesets a rule name in small caps. Typing `[[` autocompletes.
 
+## Importing Typst
+
+**Open…** also accepts a `.typ` file and imports it as a new document:
+
+* `=` headings become headings, so each top-level `=` is a section;
+* curryst `#prooftree(rule(...))` calls become rule blocks (nested rules become
+  proof trees), and a `#box[$ … $]` right before them becomes the judgment form;
+* `$ x ::= a | b $` displays become grammar rows, named by a bold label just above;
+* prose keeps `*bold*`, `_emphasis_`, lists and `@refs`; all math is converted to
+  LaTeX syntax;
+* `// comments`, `#pagebreak()` and anything without an editor equivalent are
+  kept as raw blocks, and listed in a note after the import.
+
 ## Exports
 
 * **PDF**: compiled from the Typst export in the browser (⤓ PDF, or Open PDF).
