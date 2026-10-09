@@ -35,6 +35,9 @@
   },
   "description": "Write type systems, proof trees and soundness proofs; export to Typst and LaTeX.",
   "author": "Singularitty",
+  "license": "MIT",
+  "homepage": "https://singularitty.github.io/proof-writer/",
+  "repository": "github:Singularitty/proof-writer",
   "main": "electron/main.cjs",
   "build": {
     "appId": "io.github.singularitty.proofwriter",

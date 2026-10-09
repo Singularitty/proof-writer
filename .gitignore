@@ -3,3 +3,4 @@ dist
 *.log
 release
 tests/fixtures/private/
+*.tsbuildinfo
