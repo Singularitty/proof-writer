@@ -423,3 +423,9 @@ table.grammar tr:hover td.alts .mini.add, table.grammar tr:focus-within td.alts 
 .tk-issues .info a { color: var(--dim); }
 .tk-where { font-weight: 600; }
 .disk-change { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 16px 0; padding: 8px 12px; border-radius: 8px; background: var(--note-bg); border: 1px solid var(--note-line); color: var(--note-ink); }
+
+/* A displayed rule never spills out of its block: premises wrap onto more rows,
+   and a conclusion that is still too wide scrolls inside the block. */
+.rules-grid { justify-content: safe center; overflow-x: auto; }
+.rule-view { grid-template-columns: minmax(min-content, 1fr) auto; }
+.rule-view .pt-prem { flex-wrap: wrap; row-gap: 0.5em; }
