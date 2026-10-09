@@ -4,6 +4,10 @@ import { checkDoc } from '../src/check';
 import { uncoveredRules } from '../src/check/coverage';
 import { sampleDoc } from '../src/model/sample';
 import type { Block } from '../src/model/types';
+import { expandMacros } from '../src/latex/macros';
+import { texToTypst } from '../src/latex/toTypst';
+import { exportTypst } from '../src/export/typst';
+import { snippetUses } from '../src/model/snippets';
 
 const progressCases = (d: ReturnType<typeof sampleDoc>) =>
   (d.blocks.find((b) => b.type === 'theorem' && b.label === 'thm:progress') as Block & { type: 'theorem' }).proof![0] as Block & { type: 'cases' };
@@ -58,5 +62,55 @@ describe('wording of an empty case', () => {
     const c = progressCases(d);
     c.cases.push({ id: 'x', title: '', body: [] });
     expect(checkDoc(d).issues.find((i) => i.code === 'empty-case')!.message).toBe('Case 5 has nothing in it');
+  });
+});
+
+
+describe('a math snippet given too few arguments', () => {
+  const sub = [{ name: 'sub', arity: 2, body: String.raw`\mathrm{#1} \rightarrow #2` }];
+  it('is reported, with the missing argument shown as a question mark', () => {
+    const problems: string[] = [];
+    const out = expandMacros(String.raw`\sub{x}`, sub, problems);
+    expect(problems).toEqual([String.raw`\sub takes 2 arguments, found 1`]);
+    expect(out).toContain('?');
+  });
+  it('is not reported when every argument is there, braced or not', () => {
+    const problems: string[] = [];
+    expandMacros(String.raw`\sub{x}{y} \sub a b`, sub, problems);
+    expect(problems).toEqual([]);
+  });
+  it('reaches the export warnings and still gives Typst something it can compile', () => {
+    const d = sampleDoc();
+    d.snippets.push({ id: 's', kind: 'math', ...sub[0] });
+    d.blocks.push({ id: 't', type: 'text', text: String.raw`$\sub{x}$ and $\sub{}{}$` });
+    const r = exportTypst(d);
+    expect(r.warnings.some((w) => w.includes(String.raw`\sub takes 2 arguments, found 1`))).toBe(true);
+    expect(r.source).not.toMatch(/upright\(\)/);
+  });
+});
+
+describe('empty arguments in the Typst conversion', () => {
+  it('never leave a call without its argument', () => {
+    expect(texToTypst(String.raw`\mathrm{} \to x`).code).not.toMatch(/\(\)/);
+    expect(texToTypst(String.raw`\frac{}{}`).code).not.toMatch(/\(\s*,|,\s*\)/);
+  });
+});
+
+describe('counting where a snippet is used', () => {
+  it('counts a math snippet in rules, text and other snippets, not longer names', () => {
+    const d = sampleDoc();
+    const ty = d.snippets.find((s) => s.name === 'ty')!;
+    const n = snippetUses(d, ty);
+    expect(n).toBeGreaterThan(15);
+    d.blocks.push({ id: 't', type: 'text', text: String.raw`$\ty{a}{b}{c}$ but not $\typo$` });
+    expect(snippetUses(d, ty)).toBe(n + 1);
+  });
+  it('counts a text snippet by its braces', () => {
+    const d = sampleDoc();
+    expect(snippetUses(d, d.snippets.find((s) => s.name === 'ind')!)).toBe(2);
+  });
+  it('is zero for a snippet nothing uses', () => {
+    const d = sampleDoc();
+    expect(snippetUses(d, { id: 'x', kind: 'math', name: 'unused', arity: 0, body: 'q' })).toBe(0);
   });
 });

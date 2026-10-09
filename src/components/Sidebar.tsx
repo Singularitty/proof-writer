@@ -6,6 +6,7 @@ import { Math } from './Math';
 import { useNumbering } from './ProseView';
 import { THEOREM_LABEL } from '../model/types';
 import { Tracker, jumpToBlock, useTracker } from './Tracker';
+import { snippetUses } from '../model/snippets';
 
 export function Sidebar() {
   const [tab, setTab] = useState<'outline' | 'snippets' | 'docs' | 'tracker'>('snippets');
@@ -98,7 +99,13 @@ function Snippets() {
             <input value={s.description ?? ''} placeholder="description (optional)" onChange={(e) => set(s.id, (x) => { x.description = e.target.value; }, 'sd' + s.id)} />
             <div className="row">
               <button className="primary" onClick={() => setEditing(null)}>Done</button>
-              <button className="danger" onClick={() => { update((d) => { d.snippets = d.snippets.filter((x) => x.id !== s.id); }); setEditing(null); }}>Delete</button>
+              <button className="danger" onClick={() => {
+                const uses = snippetUses(useStore.getState().doc, s);
+                const call = s.kind === 'math' ? '\\' + s.name : `{{${s.name}}}`;
+                if (uses && !confirm(`${call} is used ${uses} time${uses === 1 ? '' : 's'} in this document. Those places will stop working. Delete it anyway?`)) return;
+                update((d) => { d.snippets = d.snippets.filter((x) => x.id !== s.id); });
+                setEditing(null);
+              }}>Delete</button>
             </div>
           </div>
         ) : (

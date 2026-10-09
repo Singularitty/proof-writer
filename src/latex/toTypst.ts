@@ -271,8 +271,9 @@ class Conv {
     }
   }
 
+  /** An argument of a Typst call; an empty one is written `""`, since a call may not leave it out. */
   arg(nodes: Node[]): string {
-    return this.seq(nodes, true);
+    return this.seq(nodes, true) || '""';
   }
 
   cmd(n: Extract<Node, { t: 'cmd' }>): string {

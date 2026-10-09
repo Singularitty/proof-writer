@@ -44,6 +44,12 @@ export default function App() {
   });
   const [showSettings, setShowSettings] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!showSettings) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowSettings(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showSettings]);
   /** The open document's file changed on disk while it has unsaved edits. */
   const [diskChange, setDiskChange] = useState<{ docId: string; text: string } | null>(null);
 

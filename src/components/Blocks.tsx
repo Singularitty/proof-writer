@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Block, BlockType, CaseItem, GrammarProduction, Rule, TheoremKind } from '../model/types';
 import { THEOREM_LABEL } from '../model/types';
 import { findBlockList, updateBlock, useStore } from '../store';
@@ -58,6 +58,19 @@ export function BlockList({ blocks, nested, offset = 0, total }: { blocks: Block
 
 function InsertBar({ before, after, nested, emptyListOf }: { before?: string; after?: string; nested?: boolean; emptyListOf?: Block[] }) {
   const [open, setOpen] = useState(false);
+  /** Open upwards when the button is too near the bottom of the window for the menu to fit below it. */
+  const [up, setUp] = useState(false);
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const r = bar.current?.getBoundingClientRect();
+    if (r) setUp(window.innerHeight - r.bottom < 360 && r.top > 360);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const onDown = (e: MouseEvent) => { if (!bar.current?.contains(e.target as Node)) setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onDown);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mousedown', onDown); };
+  }, [open]);
   const update = useStore((s) => s.update);
   const insert = (type: BlockType) => {
     const nb = makeBlock(type);
@@ -78,10 +91,10 @@ function InsertBar({ before, after, nested, emptyListOf }: { before?: string; af
   };
   const types = nested ? BLOCK_TYPES.filter((t) => t.type !== 'heading') : BLOCK_TYPES;
   return (
-    <div className={'insert-bar' + (open ? ' open' : '')}>
+    <div ref={bar} className={'insert-bar' + (open ? ' open' : '')}>
       <button className="insert-btn" onClick={() => setOpen(!open)} title="Insert block" aria-label="Insert block">＋</button>
       {open && (
-        <div className="insert-menu" onMouseLeave={() => setOpen(false)}>
+        <div className={'insert-menu' + (up ? ' up' : '')} onMouseLeave={() => setOpen(false)}>
           {types.map((t) => (
             <button key={t.type} onClick={() => insert(t.type)}>
               <strong>{t.label}</strong>

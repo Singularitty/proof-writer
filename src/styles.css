@@ -451,3 +451,5 @@ body { overflow-x: auto; }
 /* "Show in PDF": the block's output is tinted for a moment */
 .pdf-mark { position: absolute; z-index: 3; pointer-events: none; background: var(--accent); border-left: 3px solid var(--accent); box-sizing: border-box; opacity: 0; animation: pdf-mark 1.8s ease-out; }
 @keyframes pdf-mark { 0% { opacity: 0.28; } 60% { opacity: 0.18; } 100% { opacity: 0; } }
+/* the insert menu opens upwards near the bottom of the window */
+.insert-menu.up { top: auto; bottom: 22px; }

@@ -114,9 +114,10 @@ function str(s: string): string {
 }
 
 export function mathTypst(src: string, ctx: ExportCtx): string {
-  const expanded = expandMacros(src, ctx.macros);
+  const problems: string[] = [];
+  const expanded = expandMacros(src, ctx.macros, problems);
   const r = texToTypst(expanded);
-  ctx.warnings.push(...r.warnings.map((w) => `${w} in "${src}"`));
+  ctx.warnings.push(...[...problems, ...r.warnings].map((w) => `${w} in "${src}"`));
   return r.code;
 }
 

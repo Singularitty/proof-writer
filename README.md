@@ -80,6 +80,9 @@ LaTeX export.
   `\newcommand`s; in Typst they are expanded.
 * **Text snippets** expand `{{name}}` in prose, e.g. `{{ind}}` → "By induction on the derivation of".
 * Clicking a snippet in the sidebar inserts it at the cursor.
+* A math snippet called with too few arguments is listed under the preview, and
+  the missing argument shows as `?`. Deleting a snippet that is still used asks
+  first and says how many places use it.
 
 ### Proof trees
 
