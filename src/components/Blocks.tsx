@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Block, BlockType, CaseItem, GrammarProduction, Rule, TheoremKind } from '../model/types';
 import { THEOREM_LABEL } from '../model/types';
 import { findBlockList, updateBlock, useStore } from '../store';
+import { moveBlock } from '../model/move';
 import { uncoveredRules } from '../check/coverage';
 import { cloneFresh, uid } from '../model/util';
 import { newNode, allRules } from '../model/tree';
@@ -117,10 +118,57 @@ const TYPE_NAMES: Record<BlockType, string> = {
   theorem: 'Theorem', cases: 'Cases', raw: 'Raw',
 };
 
+/** The block being dragged, and a way to clear whichever block currently shows where it would land. */
+let dragged: { id: string; type: BlockType } | null = null;
+let clearDropMark: (() => void) | null = null;
+
 function BlockFrame({ block, index, count, nested }: { block: Block; index: number; count: number; nested?: boolean }) {
   const update = useStore((s) => s.update);
   const selected = useStore((s) => s.selectedBlock === block.id);
   const selectBlock = useStore((s) => s.selectBlock);
+  // dragging by the grip (or the type label) moves the block; `drop` is where a dragged block would land here
+  const frame = useRef<HTMLElement>(null);
+  const [drop, setDrop] = useState<'before' | 'after' | null>(null);
+  const mark = (v: 'before' | 'after' | null) => {
+    const clear = () => setDrop(null);
+    if (v && clearDropMark !== clear) clearDropMark?.();
+    clearDropMark = v ? clear : null;
+    setDrop(v);
+  };
+  const grip = {
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      dragged = { id: block.id, type: block.type };
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', block.id);
+      if (frame.current) e.dataTransfer.setDragImage(frame.current, 24, 16);
+      e.stopPropagation();
+    },
+    onDragEnd: () => { dragged = null; clearDropMark?.(); clearDropMark = null; },
+  };
+  /** Whether the dragged block may land beside this one: not on or inside itself, and a heading only at the top level. */
+  const accepts = (el: Element) => !!dragged && dragged.id !== block.id && !el.closest(`#block-${CSS.escape(dragged.id)}`) && !(dragged.type === 'heading' && nested);
+  const onDragOver = (e: React.DragEvent) => {
+    if (!accepts(e.currentTarget)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    const r = e.currentTarget.getBoundingClientRect();
+    const place = e.clientY < r.top + r.height / 2 ? 'before' : 'after';
+    if (place !== drop) mark(place);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    if (!dragged || !accepts(e.currentTarget)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const id = dragged.id;
+    const r = e.currentTarget.getBoundingClientRect();
+    const place = e.clientY < r.top + r.height / 2 ? 'before' : 'after';
+    dragged = null;
+    mark(null);
+    update((d) => { moveBlock(d.blocks as Block[], id, block.id, place); });
+    selectBlock(id);
+  };
   const move = (d: -1 | 1) => update((doc) => {
     const list = findBlockList(doc.blocks, block.id);
     if (!list) return;
@@ -143,12 +191,17 @@ function BlockFrame({ block, index, count, nested }: { block: Block; index: numb
   return (
     <section
       id={'block-' + block.id}
-      className={`block block-${block.type}` + (selected ? ' selected' : '') + (nested ? ' nested' : '')}
+      ref={frame}
+      className={`block block-${block.type}` + (selected ? ' selected' : '') + (nested ? ' nested' : '') + (drop ? ' drop-' + drop : '')}
       onMouseDown={() => { if (!selected) selectBlock(block.id); }}
+      onDragOver={onDragOver}
+      onDragLeave={(e) => { if (drop && !e.currentTarget.contains(e.relatedTarget as Node | null)) mark(null); }}
+      onDrop={onDrop}
     >
       <div className="block-gutter">
-        <span className="block-type">{TYPE_NAMES[block.type]}</span>
+        <span className="block-type" {...grip} title="Drag to move">{TYPE_NAMES[block.type]}</span>
         <div className="block-actions">
+          <span className="drag-grip" {...grip} title="Drag to move" aria-label="Drag to move" role="button">⠿</span>
           <button onClick={() => move(-1)} disabled={index === 0} title="Move up" aria-label="Move up">↑</button>
           <button onClick={() => move(1)} disabled={index === count - 1} title="Move down" aria-label="Move down">↓</button>
           <button onClick={duplicate} title="Duplicate" aria-label="Duplicate">⧉</button>

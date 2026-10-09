@@ -46,6 +46,9 @@ unsigned, so the first launch needs right-click → Open.
 ## Writing
 
 The document is a list of blocks. Click **＋** between blocks to insert one.
+Drag a block by the **⠿** grip beside it, or by its type label, to move it. A
+line shows where it will land. Blocks can be dragged into and out of proofs and
+cases; headings stay at the top level.
 
 **Sections.** Every top-level H1 heading starts a section. The tabs above the
 editor show one section at a time (or **All** for the whole document), and
