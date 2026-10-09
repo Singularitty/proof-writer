@@ -66,7 +66,14 @@ export type Block =
       proof?: Block[];
       collapsed?: boolean;
     }
-  | { id: Id; type: 'cases'; intro: string; cases: CaseItem[] }
+  | {
+      id: Id;
+      type: 'cases';
+      intro: string;
+      cases: CaseItem[];
+      /** What the analysis ranges over, when recorded: the rules block whose rules the cases should cover. */
+      over?: { kind: 'rules'; block: Id };
+    }
   | { id: Id; type: 'raw'; typst: string; latex: string };
 
 export type BlockType = Block['type'];
