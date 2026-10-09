@@ -16,6 +16,9 @@ jumps to its section. The preview and exports always cover the whole document.
 
 Clicking anywhere in the preview selects the block that produced that part of
 the page and scrolls the editor to it, switching section if needed.
+**↻ Recompile** above the preview compiles the whole document again and redraws
+it from scratch, in case the preview ever looks wrong.
+
 The **⇢** button beside a block goes the other way: it scrolls the preview to
 that block's output and tints it for a moment.
 
