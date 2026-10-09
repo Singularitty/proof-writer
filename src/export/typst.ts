@@ -35,7 +35,7 @@ export const TYPST_PREAMBLE = String.raw`// ---- proof-writer support code ----
   grid(
     columns: (w, lw),
     column-gutter: 0.3em,
-    row-gutter: 0.22em,
+    row-gutter: 0.42em,
     align(center + bottom, if prem == none { [] } else { prem }), [],
     line(length: w, stroke: 0.45pt),
     box(width: lw, height: 0pt, place(left + horizon, label)),
