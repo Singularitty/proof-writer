@@ -4,7 +4,7 @@ import { exportTypst } from '../export/typst';
 import { exportLatex } from '../export/latex';
 import { compileTypst, vectorToSvg } from './compile';
 import { separatePages } from './pages';
-import { blockAt, type Anchor } from './anchors';
+import { anchorSpan, blockAt, type Anchor } from './anchors';
 import { jumpToBlock } from '../components/Tracker';
 import { download, slug } from '../util/download';
 import { desktop } from '../util/desktop';
@@ -66,6 +66,29 @@ export function Preview() {
     if (id) jumpToBlock(id);
   };
 
+  // "Show in PDF" on a block: scroll its output into view and mark it for a moment
+  const target = useStore((s) => s.pdfTarget);
+  const shown = useRef(0);
+  const wrap = useRef<HTMLDivElement>(null);
+  const [mark, setMark] = useState<{ n: number; top: number; left: number; width: number; height: number } | null>(null);
+  useEffect(() => {
+    if (!target || shown.current === target.n) return;
+    if (tab !== 'pdf') { setTab('pdf'); return; }
+    const box = wrap.current;
+    const papers = box ? [...box.querySelectorAll('rect.pw-paper')] : [];
+    if (!box || !papers.length) return;
+    shown.current = target.n;
+    const span = anchorSpan(anchors.current, target.id, Number(papers[0].getAttribute('height')));
+    const paper = span && papers[span.page - 1];
+    if (!span || !paper) return;
+    const r = paper.getBoundingClientRect();
+    const b = box.getBoundingClientRect();
+    const scale = r.height / Number(paper.getAttribute('height'));
+    const top = r.top - b.top + box.scrollTop + span.y * scale;
+    box.scrollTo({ top: Math.max(0, top - 70), behavior: 'smooth' });
+    setMark({ n: target.n, top, left: r.left - b.left + box.scrollLeft, width: r.width, height: Math.max(16, (span.end - span.y) * scale) });
+  }, [target, tab, svg]); // eslint-disable-line
+
   const name = slug(doc.title);
   const downloadPdf = async () => {
     const r = await compileTypst(exportTypst(doc).source, 'pdf');
@@ -112,7 +135,7 @@ export function Preview() {
         )}
       </div>
       {tab === 'pdf' && (
-        <div className="pdf-wrap">
+        <div className="pdf-wrap" ref={wrap}>
           <div className={'status ' + status.state}>{status.msg}</div>
           {diags.length > 0 && (
             <div className="diags">
@@ -120,6 +143,7 @@ export function Preview() {
               <div className="dim">Check the Typst tab; a raw block or an unusual LaTeX command is the usual cause.</div>
             </div>
           )}
+          {mark && <div key={mark.n} className="pdf-mark" style={{ top: mark.top, left: mark.left, width: mark.width, height: mark.height }} onAnimationEnd={() => setMark(null)} />}
           <div className="pages" onClick={goToSource} title="Click to go to that part of the document" dangerouslySetInnerHTML={{ __html: svg }} />
         </div>
       )}

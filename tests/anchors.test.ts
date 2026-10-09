@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { exportTypst } from '../src/export/typst';
-import { blockAt, type Anchor } from '../src/preview/anchors';
+import { anchorSpan, blockAt, type Anchor } from '../src/preview/anchors';
 import { sampleDoc } from '../src/model/sample';
 import type { Block } from '../src/model/types';
 
@@ -49,5 +49,29 @@ describe('finding the block under a click', () => {
   it('forgives a click a little above the start of a block', () => {
     expect(blockAt(anchors, 1, 298)).toBe('b');
     expect(blockAt(anchors, 1, 290)).toBe('a');
+  });
+});
+
+describe('where a block is in the preview', () => {
+  const anchors: Anchor[] = [
+    { id: 'a', page: 1, y: 100 },
+    { id: 'b', page: 1, y: 300 },
+    { id: 'c', page: 2, y: 80 },
+  ];
+  it('runs from its own start to the start of the next block on the page', () => {
+    expect(anchorSpan(anchors, 'a', 842)).toEqual({ page: 1, y: 100, end: 300 });
+  });
+  it('runs to the foot of the page when it is the last block there', () => {
+    expect(anchorSpan(anchors, 'b', 842)).toEqual({ page: 1, y: 300, end: 842 });
+    expect(anchorSpan(anchors, 'c', 842)).toEqual({ page: 2, y: 80, end: 842 });
+  });
+  it('is nothing for a block the preview does not have', () => {
+    expect(anchorSpan(anchors, 'zz', 842)).toBe(null);
+  });
+  it('does not depend on the order the anchors arrive in', () => {
+    expect(anchorSpan([...anchors].reverse(), 'a', 842)).toEqual({ page: 1, y: 100, end: 300 });
+  });
+  it('skips blocks that start at the same height, such as a block nested at the top of another', () => {
+    expect(anchorSpan([{ id: 'outer', page: 1, y: 100 }, { id: 'inner', page: 1, y: 100 }, { id: 'next', page: 1, y: 250 }], 'outer', 842)).toEqual({ page: 1, y: 100, end: 250 });
   });
 });

@@ -447,3 +447,7 @@ body { overflow-x: auto; }
 .topbar .doc-title { flex: 0 1 380px; min-width: 90px; }
 .topbar .doc-author { flex: 0 1 auto; min-width: 60px; }
 .topbar button, .topbar .logo { flex: none; }
+
+/* "Show in PDF": the block's output is tinted for a moment */
+.pdf-mark { position: absolute; z-index: 3; pointer-events: none; background: var(--accent); border-left: 3px solid var(--accent); box-sizing: border-box; opacity: 0; animation: pdf-mark 1.8s ease-out; }
+@keyframes pdf-mark { 0% { opacity: 0.28; } 60% { opacity: 0.18; } 100% { opacity: 0; } }

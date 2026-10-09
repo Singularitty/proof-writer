@@ -65,6 +65,9 @@ interface State {
   /** Set when saving to browser storage failed. */
   storageError: string | null;
   githubDialog: 'open' | 'commit' | null;
+  /** The block the preview was last asked to show; `n` makes each request distinct. */
+  pdfTarget: { id: string; n: number } | null;
+  showInPdf: (id: string) => void;
   setGithubDialog: (m: 'open' | 'commit' | null) => void;
 
   update: (f: (d: Draft<Doc>) => void, editKey?: string) => void;
@@ -138,6 +141,8 @@ export const useStore = create<State>((set, get) => ({
   insertTarget: null,
   storageError: null,
   githubDialog: null,
+  pdfTarget: null,
+  showInPdf: (id) => set({ pdfTarget: { id, n: (get().pdfTarget?.n ?? 0) + 1 } }),
   setGithubDialog: (m) => set({ githubDialog: m }),
 
   update: (f, editKey) => {

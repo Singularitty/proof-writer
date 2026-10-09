@@ -134,6 +134,7 @@ function BlockFrame({ block, index, count, nested }: { block: Block; index: numb
           <button onClick={() => move(-1)} disabled={index === 0} title="Move up" aria-label="Move up">↑</button>
           <button onClick={() => move(1)} disabled={index === count - 1} title="Move down" aria-label="Move down">↓</button>
           <button onClick={duplicate} title="Duplicate" aria-label="Duplicate">⧉</button>
+          <button onClick={() => useStore.getState().showInPdf(block.id)} title="Show in PDF" aria-label="Show in PDF">⇢</button>
           <button className="danger" onClick={remove} title="Delete block" aria-label="Delete block">✕</button>
         </div>
       </div>
