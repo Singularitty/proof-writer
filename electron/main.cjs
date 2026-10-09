@@ -5,6 +5,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { watchFile } = require('./watch.cjs');
 
 const DIST = path.join(__dirname, '..', 'dist');
 
@@ -76,9 +77,30 @@ ipcMain.handle('save-document', async (e, { path: p, text, suggestedName }) => {
     if (r.canceled || !r.filePath) return null;
     p = r.filePath;
   }
+  const w = watchers.get(e.sender.id);
+  if (w?.path === p) w.stop.known(text);
   await fs.writeFile(p, text, 'utf8');
   app.addRecentDocument(p);
   return p;
+});
+
+// Each window watches the file behind its open document, so an edit made
+// outside the app (another program, a git pull) reaches the editor.
+const watchers = new Map();
+
+ipcMain.handle('watch-document', (e, p) => {
+  const sender = e.sender;
+  const id = sender.id;
+  const current = watchers.get(id);
+  if (current?.path === p) return;
+  if (current) current.stop();
+  else sender.once('destroyed', () => { watchers.get(id)?.stop(); watchers.delete(id); });
+  watchers.delete(id);
+  if (!p) return;
+  try {
+    const stop = watchFile(p, (text) => { if (!sender.isDestroyed()) sender.send('document-changed', { path: p, text }); });
+    watchers.set(id, { path: p, stop });
+  } catch { /* the folder is gone; nothing to watch */ }
 });
 
 ipcMain.handle('save-file', async (e, { suggestedName, data, filters }) => {

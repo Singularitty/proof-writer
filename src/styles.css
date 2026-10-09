@@ -396,3 +396,28 @@ table.grammar tr:hover td.alts .mini.add, table.grammar tr:focus-within td.alts 
 .gh-token summary { cursor: pointer; color: var(--ink-2); }
 .gh-token .gh-row { margin-top: 8px; }
 .gh-token .help { color: var(--dim); font-size: 12px; margin: 8px 0 0; }
+
+/* tracker tab */
+.sidebar .tabs { flex-wrap: wrap; gap: 0; }
+.sidebar .tabs button { padding: 4px 6px; }
+.tab-count { margin-left: 4px; padding: 0 4px; border-radius: 8px; font-size: 11px; background: var(--warn-bg); color: var(--warn-ink); }
+.tab-count.error { background: var(--danger-bg); color: var(--danger); }
+.tracker-summary { margin: 4px 0 10px; font-weight: 600; }
+.tracker-summary.clean { color: var(--ok); }
+.tk-group { margin-bottom: 12px; }
+.tk-head { display: flex; align-items: baseline; gap: 7px; padding: 3px 6px; border-radius: 5px; cursor: pointer; font-weight: 600; }
+.tk-head:hover, .tk-issues a:hover { background: var(--accent-soft); }
+.tk-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.tk-dot.warning { background: var(--warn); }
+.tk-dot.error { background: var(--danger); }
+.tk-line { padding: 1px 6px 1px 21px; font-size: 13px; }
+.tk-ind a { cursor: pointer; }
+.tk-over { display: flex; align-items: center; gap: 5px; color: var(--dim); margin-top: 2px; }
+.tk-over select { min-width: 0; max-width: 130px; font-size: 12px; padding: 1px 2px; }
+.tk-issues { list-style: none; margin: 2px 0 0; padding: 0 0 0 15px; font-size: 13px; }
+.tk-issues a { display: block; padding: 2px 6px; border-radius: 5px; cursor: pointer; border-left: 2px solid var(--line-strong); }
+.tk-issues .error a { border-left-color: var(--danger); }
+.tk-issues .warning a { border-left-color: var(--warn); }
+.tk-issues .info a { color: var(--dim); }
+.tk-where { font-weight: 600; }
+.disk-change { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 16px 0; padding: 8px 12px; border-radius: 8px; background: var(--note-bg); border: 1px solid var(--note-line); color: var(--note-ink); }

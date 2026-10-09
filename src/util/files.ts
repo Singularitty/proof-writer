@@ -1,6 +1,6 @@
 import { useStore, type DocMeta } from '../store';
 import { importTypst } from '../import/typst';
-import { setDocFilePath } from './desktop';
+import { desktop, markSaved, setDocFilePath } from './desktop';
 import type { Doc } from '../model/types';
 
 /**
@@ -22,7 +22,12 @@ export function loadFile(text: string, path?: string, name = path ?? '', meta?: 
     if (!Array.isArray(d.blocks) || !Array.isArray(d.snippets)) throw new Error('not a proof-writer document');
     d.settings ??= { paper: 'a4', fontSize: 11, numberTheorems: 'shared' };
     useStore.getState().importDoc(d, meta);
-    if (path) setDocFilePath(useStore.getState().docId, path);
+    if (path) {
+      const { docId, doc } = useStore.getState();
+      setDocFilePath(docId, path);
+      markSaved(docId, doc, text);
+      void desktop?.watchDocument(path);
+    }
     return true;
   } catch (e) {
     alert('Could not open that file: ' + (e instanceof Error ? e.message : e));

@@ -5,20 +5,27 @@ import { uid } from '../model/util';
 import { Math } from './Math';
 import { useNumbering } from './ProseView';
 import { THEOREM_LABEL } from '../model/types';
+import { Tracker, jumpToBlock, useTracker } from './Tracker';
 
 export function Sidebar() {
-  const [tab, setTab] = useState<'outline' | 'snippets' | 'docs'>('snippets');
+  const [tab, setTab] = useState<'outline' | 'snippets' | 'docs' | 'tracker'>('snippets');
+  const tracker = useTracker();
+  const problems = tracker.errors + tracker.warnings;
   return (
     <aside className="sidebar">
       <div className="tabs">
         <button className={tab === 'snippets' ? 'active' : ''} onClick={() => setTab('snippets')}>Snippets</button>
         <button className={tab === 'outline' ? 'active' : ''} onClick={() => setTab('outline')}>Outline</button>
         <button className={tab === 'docs' ? 'active' : ''} onClick={() => setTab('docs')}>Documents</button>
+        <button className={tab === 'tracker' ? 'active' : ''} onClick={() => setTab('tracker')} title="Missing cases, broken references and unfinished proofs">
+          Tracker{problems > 0 && <span className={'tab-count' + (tracker.errors ? ' error' : '')}>{problems}</span>}
+        </button>
       </div>
       <div className="sidebar-body">
         {tab === 'outline' && <Outline />}
         {tab === 'snippets' && <Snippets />}
         {tab === 'docs' && <Docs />}
+        {tab === 'tracker' && <Tracker view={tracker} />}
       </div>
     </aside>
   );
@@ -43,11 +50,7 @@ function Outline() {
     <ul className="outline">
       {items.map((it) => (
         <li key={it.id} className={it.cls}>
-          <a onClick={() => {
-            // Selecting first lets the editor switch to the section holding this block before scrolling to it.
-            useStore.getState().selectBlock(it.id);
-            setTimeout(() => document.getElementById('block-' + it.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-          }}>{it.text}</a>
+          <a onClick={() => jumpToBlock(it.id)}>{it.text}</a>
         </li>
       ))}
     </ul>

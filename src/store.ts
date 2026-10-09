@@ -76,6 +76,8 @@ interface State {
   openDoc: (id: string) => void;
   newDoc: (sample?: boolean) => void;
   importDoc: (d: Doc, meta?: Partial<DocMeta>) => void;
+  /** Swap in new contents for the open document (it changed on disk); one undo step. */
+  replaceDoc: (d: Doc) => void;
   deleteDoc: (id: string) => void;
   renameDoc: (id: string, title: string) => void;
   duplicateDoc: (id: string) => void;
@@ -181,6 +183,10 @@ export const useStore = create<State>((set, get) => ({
     save(INDEX_KEY, nextIndex);
     save('proof-writer:last', id);
     set({ docId: id, doc: d, index: nextIndex, past: [], future: [], selectedBlock: null, section: null });
+  },
+  replaceDoc: (d) => {
+    const { doc, past, docId, index } = get();
+    set({ doc: d, past: [...past.slice(-MAX_HISTORY), doc], future: [], lastEditKey: null, index: persist(docId, d, index) });
   },
   deleteDoc: (id) => {
     const { docId, index } = get();

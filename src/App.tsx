@@ -6,7 +6,8 @@ import { SectionPager, SectionTabs, useCurrentSection } from './components/Secti
 import { Preview } from './preview/Preview';
 import { Icon } from './components/Icon';
 import { download, slug } from './util/download';
-import { desktop, docFilePath, setDocFilePath } from './util/desktop';
+import { desktop, docFilePath, markDiskSeen, markSaved, savedState, setDocFilePath } from './util/desktop';
+import { externalChange } from './util/external';
 import { loadFile } from './util/files';
 import { GitHubDialog } from './components/GitHubDialog';
 import type { Doc } from './model/types';
@@ -43,6 +44,8 @@ export default function App() {
   });
   const [showSettings, setShowSettings] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  /** The open document's file changed on disk while it has unsaved edits. */
+  const [diskChange, setDiskChange] = useState<{ docId: string; text: string } | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -66,7 +69,21 @@ export default function App() {
     // In the desktop app, the File menu and "Open with" route here.
     const offMenu = desktop?.onMenu((c) => (c === 'open' ? openDoc() : saveDoc(c === 'save-as')));
     desktop?.pendingOpen().then((f) => f && loadFile(f.text, f.path));
-    return () => { window.removeEventListener('keydown', onKey); offMenu?.(); };
+    const offChanged = desktop?.onDocumentChanged(({ path, text }) => {
+      const { docId, doc } = useStore.getState();
+      if (docFilePath(docId) !== path) return;
+      const s = savedState(docId);
+      const action = externalChange({ disk: text, saved: s?.text ?? null, dirty: !s || s.doc !== doc });
+      if (action === 'reload') reloadFromDisk(docId, text);
+      else if (action === 'ask') setDiskChange({ docId, text });
+    });
+    // Each document has its own file; follow whichever one is open.
+    const offDoc = useStore.subscribe((s, prev) => {
+      if (s.docId === prev.docId) return;
+      setDiskChange(null);
+      void desktop?.watchDocument(docFilePath(s.docId));
+    });
+    return () => { window.removeEventListener('keydown', onKey); offMenu?.(); offChanged?.(); offDoc(); };
   }, []);
 
   const startDrag = (e: React.MouseEvent) => {
@@ -85,7 +102,7 @@ export default function App() {
 
   const importFile = async (f: File) => loadFile(await f.text(), undefined, f.name);
   return (
-    <div className="app" style={{ gridTemplateColumns: `260px 1fr 6px ${previewWidth}px` }}>
+    <div className="app" style={{ gridTemplateColumns: `300px 1fr 6px ${previewWidth}px` }}>
       <header className="topbar">
         <span className="logo">⊢ Proof Writer</span>
         <input className="doc-title" value={doc.title} onChange={(e) => update((d) => { d.title = e.target.value; }, 'title')} placeholder="Document title" />
@@ -125,6 +142,13 @@ export default function App() {
       <Sidebar />
       <main className="editor" onMouseDown={(e) => { if (e.target === e.currentTarget) useStore.getState().selectBlock(null); }}>
         {storageError && <div className="storage-error" role="alert">{storageError}</div>}
+        {diskChange && diskChange.docId === useStore.getState().docId && (
+          <div className="disk-change" role="alert">
+            This document's file was changed outside Proof Writer, and you have unsaved edits here.
+            <button onClick={() => { reloadFromDisk(diskChange.docId, diskChange.text); setDiskChange(null); }} title="Replace what is here with the file's contents (Undo brings your edits back)">Reload</button>
+            <button onClick={() => { markDiskSeen(diskChange.docId, diskChange.text); setDiskChange(null); }} title="Keep editing; saving will overwrite the file">Keep mine</button>
+          </div>
+        )}
         <SectionTabs />
         <div className="editor-inner">
           {current
@@ -149,6 +173,18 @@ async function openDoc() {
   }
 }
 
+/** Replaces the open document with what its file now holds. A file that does not parse is left alone. */
+function reloadFromDisk(docId: string, text: string) {
+  if (useStore.getState().docId !== docId) return;
+  try {
+    const d = JSON.parse(text) as Doc;
+    if (!Array.isArray(d.blocks) || !Array.isArray(d.snippets)) return;
+    d.settings ??= { paper: 'a4', fontSize: 11, numberTheorems: 'shared' };
+    useStore.getState().replaceDoc(d);
+    markSaved(docId, d, text);
+  } catch { /* half-written or not a document: wait for the next change */ }
+}
+
 /** Desktop: writes to the document's file (asking once for a path); browser: downloads it. */
 async function saveDoc(saveAs: boolean) {
   const { doc, docId } = useStore.getState();
@@ -157,7 +193,11 @@ async function saveDoc(saveAs: boolean) {
   if (!desktop) { download(name, text, 'application/json'); return; }
   try {
     const p = await desktop.saveDocument(saveAs ? null : docFilePath(docId), text, name);
-    if (p) setDocFilePath(docId, p);
+    if (p) {
+      setDocFilePath(docId, p);
+      markSaved(docId, doc, text);
+      void desktop.watchDocument(p);
+    }
   } catch (e) {
     alert('Could not save: ' + e);
   }
