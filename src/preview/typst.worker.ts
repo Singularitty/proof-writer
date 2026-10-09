@@ -19,7 +19,7 @@ export type WorkerRequest =
   | { id: number; kind: 'live'; source: string; fontBase: string; full: boolean };
 export type WorkerResponse =
   | { id: number; ok: true; data: Uint8Array; diagnostics: string[]; ms: number; /** Where each block starts, when the source carries anchors. */ anchors: Anchor[]; /** The data is the whole document, not a change to the last one. */ full: boolean }
-  | { id: number; ok: false; diagnostics: string[] };
+  | { id: number; ok: false; diagnostics: string[]; /** The compiler itself failed, and cannot be used again. */ crashed?: boolean };
 
 let compilerP: Promise<TypstCompiler> | null = null;
 
@@ -87,7 +87,9 @@ async function handle(req: WorkerRequest): Promise<WorkerResponse> {
     }
     return { id, ok: true, data: r.result, diagnostics, ms: performance.now() - t0, anchors, full };
   } catch (e) {
-    return { id, ok: false, diagnostics: [String(e instanceof Error ? e.message : e)] };
+    // An error in the source comes back as diagnostics. Anything thrown is the compiler
+    // failing part-way through a call, which leaves it refusing every call after.
+    return { id, ok: false, crashed: true, diagnostics: [String(e instanceof Error ? e.message : e)] };
   }
 }
 

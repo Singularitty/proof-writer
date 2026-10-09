@@ -13,13 +13,25 @@ const pending = new Map<number, (r: WorkerResponse) => void>();
 function getWorker(): Worker {
   if (!worker) {
     worker = new Worker(new URL('./typst.worker.ts', import.meta.url), { type: 'module' });
-    worker.onmessage = (ev: MessageEvent<WorkerResponse>) => {
+    const w = worker;
+    w.onmessage = (ev: MessageEvent<WorkerResponse>) => {
+      if (!ev.data.ok && ev.data.crashed) return dropWorker(w, ev.data.diagnostics);
       const cb = pending.get(ev.data.id);
       pending.delete(ev.data.id);
       cb?.(ev.data);
     };
   }
   return worker;
+}
+
+/** Ends a worker whose compiler crashed. The next request starts a new one; the requests it still held are answered as failed. */
+function dropWorker(w: Worker, diagnostics: string[]) {
+  if (w !== worker) return;
+  w.terminate();
+  worker = null;
+  const waiting = [...pending];
+  pending.clear();
+  for (const [id, cb] of waiting) cb({ id, ok: false, crashed: true, diagnostics });
 }
 
 type Ask = { kind: 'pdf'; source: string } | { kind: 'live'; source: string; full: boolean };
@@ -139,7 +151,13 @@ export async function renderLive(source: string): Promise<LiveResult> {
   const r = await getRenderer();
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await ask({ kind: 'live', source, full: needFull });
-    if (!res.ok) return res;
+    if (!res.ok) {
+      if (!res.crashed) return res;
+      // the compiler was restarted and remembers nothing; try once more in case the document was not the cause
+      needFull = true;
+      if (attempt === 0) continue;
+      return { ok: false, diagnostics: [`The Typst compiler crashed on this document and was restarted (${res.diagnostics.join('; ')}).`] };
+    }
     const done = applying.then(async () => {
       // a change can only be applied to the document it was made against
       if (needFull && !res.full) return false;
