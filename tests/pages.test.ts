@@ -1,32 +1,33 @@
 import { describe, it, expect } from 'vitest';
-import { separatePages } from '../src/preview/pages';
+import { splitPages } from '../src/preview/pages';
 
-const page = (y: number) => `<g class="typst-page" transform="translate(0, ${y})" data-tid="p${y}" data-page-width="596" data-page-height="842"><path d="M0 0"/></g>`;
-const svg = (pages: number[]) =>
-  `<svg style="overflow: visible;" class="typst-doc" viewBox="0 0 596.000 ${842 * pages.length}.000" width="596.000" height="${842 * pages.length}.000" data-width="596.000" data-height="${842 * pages.length}.000" xmlns="http://www.w3.org/2000/svg"><style>.a{}</style>${pages.map(page).join('')}<script>1</script></svg>`;
+const page = (y: number, body = '<path d="M0 0"/>') => `<g class="typst-page" transform="translate(0, ${y})" data-tid="p${y}" data-page-width="596" data-page-height="842">${body}</g>`;
+const svg = (pages: string[]) =>
+  `<svg style="overflow: visible;" class="typst-doc" viewBox="0 0 596.000 ${842 * pages.length}.000" width="596.000" xmlns="http://www.w3.org/2000/svg"><style>.a{}</style><defs class="glyph"><path id="g1"/></defs>${pages.join('')}<script>1</script></svg>`;
 
-describe('separating the pages of the preview', () => {
-  it('moves each page down by the gaps before it and grows the drawing to fit', () => {
-    const out = separatePages(svg([0, 842, 1684]), 20);
-    expect([...out.matchAll(/<g class="typst-page" transform="translate\(0, ([\d.]+)\)"/g)].map((m) => +m[1])).toEqual([0, 862, 1724]);
-    expect(out).toContain('viewBox="0 0 596.000 2566"');
-    expect(out).toContain(' height="2566"');
+describe('splitting the preview into pages', () => {
+  it('gives each page its size and its own drawing, moved to the top of its sheet', () => {
+    const out = splitPages(svg([page(0), page(842, '<use href="#g1"/>')]));
+    expect(out.pages).toHaveLength(2);
+    expect(out.pages[1]).toMatchObject({ width: 596, height: 842 });
+    expect(out.pages[1].body).toBe('<g class="typst-page" transform="translate(0, 0)" data-tid="p842" data-page-width="596" data-page-height="842"><use href="#g1"/></g>');
   });
-  it('puts a sheet of paper behind every page, where the page now is', () => {
-    const out = separatePages(svg([0, 842]), 20);
-    expect([...out.matchAll(/<rect class="pw-paper" x="0" y="([\d.]+)" width="596" height="842"\/><g class="typst-page"/g)].map((m) => +m[1])).toEqual([0, 862]);
+  it('keeps the styles and glyph definitions the pages share, once', () => {
+    const out = splitPages(svg([page(0), page(842)]));
+    expect(out.head).toBe('<style>.a{}</style><defs class="glyph"><path id="g1"/></defs>');
   });
-  it('leaves the page contents as they were', () => {
-    const out = separatePages(svg([0, 842]), 20);
-    expect(out.match(/<path d="M0 0"\/>/g)).toHaveLength(2);
-    expect(out).toContain('<script>1</script></svg>');
+  it('leaves the script out', () => {
+    const out = splitPages(svg([page(0)]));
+    expect(out.head + out.pages.map((p) => p.body).join('')).not.toContain('<script');
   });
-  it('gives a single page its paper and no extra height', () => {
-    const out = separatePages(svg([0]), 20);
-    expect(out).toContain('viewBox="0 0 596.000 842"');
-    expect(out.match(/pw-paper/g)).toHaveLength(1);
+  it('returns the same text for a page that did not change, so it need not be drawn again', () => {
+    const a = splitPages(svg([page(0), page(842, '<text>one</text>')]));
+    const b = splitPages(svg([page(0), page(842, '<text>two</text>')]));
+    expect(b.pages[0].body).toBe(a.pages[0].body);
+    expect(b.pages[1].body).not.toBe(a.pages[1].body);
   });
-  it('returns text it does not recognise unchanged', () => {
-    expect(separatePages('<svg><g/></svg>', 20)).toBe('<svg><g/></svg>');
+  it('has no pages for text it does not recognise', () => {
+    expect(splitPages('<svg><g/></svg>')).toEqual({ head: '', pages: [] });
+    expect(splitPages('')).toEqual({ head: '', pages: [] });
   });
 });

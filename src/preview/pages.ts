@@ -1,23 +1,37 @@
-// The renderer returns every page in one drawing, stacked with nothing between
-// them. This spreads the pages apart and gives each its own sheet of paper, so
-// the preview shows where the page breaks fall.
+// The renderer returns every page in one drawing. This takes it apart: what the
+// pages share (styles, glyph outlines) and each page on its own, so the preview
+// can show separate sheets and redraw only the pages an edit changed.
 
-const PAGE = /<g class="typst-page" transform="translate\(0, ([\d.]+)\)"([^>]*?) data-page-width="([\d.]+)" data-page-height="([\d.]+)">/g;
+export interface PreviewPage {
+  width: number;
+  height: number;
+  /** The page's drawing, placed at the top of its own sheet. */
+  body: string;
+}
 
-export function separatePages(svg: string, gap: number): string {
-  let n = 0;
-  const out = svg.replace(PAGE, (_m, y: string, rest: string, w: string, h: string) => {
-    const top = +y + n++ * gap;
-    return `<rect class="pw-paper" x="0" y="${top}" width="${w}" height="${h}"/><g class="typst-page" transform="translate(0, ${top})"${rest} data-page-width="${w}" data-page-height="${h}">`;
+export interface PreviewDoc {
+  /** Styles and definitions every page refers to. */
+  head: string;
+  pages: PreviewPage[];
+}
+
+const PAGE = /<g class="typst-page" transform="translate\(0, [\d.]+\)"([^>]*?) data-page-width="([\d.]+)" data-page-height="([\d.]+)">/g;
+
+export function splitPages(svg: string): PreviewDoc {
+  const starts = [...svg.matchAll(PAGE)];
+  if (!starts.length) return { head: '', pages: [] };
+  const last = starts[starts.length - 1].index!;
+  // after the last page come the renderer's script and the closing tag
+  const script = svg.indexOf('<script', last);
+  const end = script >= 0 ? script : svg.lastIndexOf('</svg>');
+  const pages = starts.map((m, i): PreviewPage => {
+    const from = m.index! + m[0].length;
+    const to = i + 1 < starts.length ? starts[i + 1].index! : end;
+    return {
+      width: +m[2],
+      height: +m[3],
+      body: `<g class="typst-page" transform="translate(0, 0)"${m[1]} data-page-width="${m[2]}" data-page-height="${m[3]}">` + svg.slice(from, to),
+    };
   });
-  if (n === 0) return svg;
-  const extra = (n - 1) * gap;
-  const grow = (v: string) => String(+v + extra);
-  // only the opening <svg> tag carries the drawing's own height
-  const end = out.indexOf('>');
-  const head = out
-    .slice(0, end)
-    .replace(/viewBox="([\d.]+ [\d.]+ [\d.]+) ([\d.]+)"/, (_m, a: string, h: string) => `viewBox="${a} ${grow(h)}"`)
-    .replace(/ (height|data-height)="([\d.]+)"/g, (_m, k: string, h: string) => ` ${k}="${grow(h)}"`);
-  return head + out.slice(end);
+  return { head: svg.slice(svg.indexOf('>') + 1, starts[0].index!), pages };
 }
