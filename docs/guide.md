@@ -82,6 +82,19 @@ site). The **Documents** tab lists them: click to open, double-click or ✎ to
 rename, ⧉ to duplicate, × to delete. If the browser refuses to save (storage
 full, private window), a red notice appears above the editor.
 
+### Saving to a file
+
+**Save to…** (Ctrl+S) asks where to put the document and writes it there as a
+`.json` file. After that the button reads **Save** and writes to the same file,
+and **Save as…** (Ctrl+Shift+S) picks a different one. A `.json` document opened
+with **Open…** (Ctrl+O) is saved back to the file it came from.
+
+This needs a browser that lets a page write to files, which today means Chrome,
+Edge and other Chromium browsers. In Firefox and Safari the button is
+**Save .json** and downloads a copy each time. The browser forgets which file a
+document belongs to when the page is reloaded, so the first save after a reload
+asks again.
+
 ### GitHub
 
 **GitHub…** in the top bar opens documents from a repository and commits them back:

@@ -33,7 +33,8 @@ and it opens with a worked example (type soundness for the simply typed
 * **Macros and references.** Define `\ty{\Gamma}{e}{\tau}` once and use it
   everywhere; `[[lem:canonical]]` becomes "Lemma 1" and `[[T-App]]` a rule name.
 * **Your files stay yours.** Documents are saved in the browser and as plain
-  `.json` files, and can be opened from and committed to a GitHub repository.
+  `.json` files on disk that Save writes back to, and can be opened from and
+  committed to a GitHub repository.
   Existing Typst files using curryst can be imported.
 
 | Applying a rule in a proof tree | Checking a proof |

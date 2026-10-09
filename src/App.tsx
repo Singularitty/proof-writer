@@ -9,6 +9,7 @@ import { download, slug } from './util/download';
 import { desktop, docFilePath, markDiskSeen, markSaved, savedState, setDocFilePath } from './util/desktop';
 import { externalChange } from './util/external';
 import { loadFile } from './util/files';
+import { canSaveToFile, pickFileToOpen, saveToFile, useJustSaved, useSaveFileName } from './util/browserFiles';
 import { GitHubDialog } from './components/GitHubDialog';
 import type { Doc } from './model/types';
 
@@ -33,6 +34,8 @@ export default function App() {
     try { localStorage.setItem('proof-writer:theme', next); } catch { /* ignore */ }
   };
   const doc = useStore((s) => s.doc);
+  const saveFile = useSaveFileName(useStore((s) => s.docId));
+  const justSaved = useJustSaved(useStore((s) => s.docId));
   const update = useStore((s) => s.update);
   const { current } = useCurrentSection();
   const storageError = useStore((s) => s.storageError);
@@ -66,7 +69,7 @@ export default function App() {
       } else if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault();
         saveDoc(e.shiftKey);
-      } else if (mod && e.key.toLowerCase() === 'o' && desktop) {
+      } else if (mod && e.key.toLowerCase() === 'o' && (desktop || canSaveToFile())) {
         e.preventDefault();
         openDoc();
       }
@@ -117,9 +120,14 @@ export default function App() {
         <button className="theme-toggle" onClick={cycleTheme} title={`Theme: ${theme} (click to change)`} aria-label={`Theme: ${theme}`}><Icon name={THEME_ICON[theme]} /></button>
         <button onClick={() => useStore.getState().undo()} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)"><Icon name="undo" /></button>
         <button onClick={() => useStore.getState().redo()} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo (Ctrl+Shift+Z)"><Icon name="redo" /></button>
-        <button onClick={() => (desktop ? openDoc() : fileInput.current?.click())} title="Open a .json document, or import a Typst .typ file (Ctrl+O)" aria-label="Open a document">Open…</button>
+        <button onClick={() => (desktop || canSaveToFile() ? openDoc() : fileInput.current?.click())} title="Open a .json document, or import a Typst .typ file (Ctrl+O)" aria-label="Open a document">Open…</button>
         <input ref={fileInput} type="file" accept=".json,.typ,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ''; }} />
-        <button onClick={() => saveDoc(false)} title="Save the document as JSON (Ctrl+S)" aria-label="Save the document as JSON (Ctrl+S)">Save .json</button>
+        {desktop || !canSaveToFile()
+          ? <button onClick={() => saveDoc(false)} title="Save the document as JSON (Ctrl+S)" aria-label="Save the document as JSON (Ctrl+S)">Save .json</button>
+          : <>
+            <button onClick={() => saveDoc(false)} title={saveFile ? `Save to ${saveFile} (Ctrl+S)` : 'Save to a file on this computer; later saves write to the same file (Ctrl+S)'}>{justSaved ? 'Saved ✓' : saveFile ? 'Save' : 'Save to…'}</button>
+            {saveFile && <button onClick={() => saveDoc(true)} title="Save to a different file (Ctrl+Shift+S)">Save as…</button>}
+          </>}
         <button onClick={() => useStore.getState().setGithubDialog('commit')} title="Open documents from, or commit this one to, a GitHub repository">GitHub…</button>
         <span className="picker-wrap">
           <button onClick={() => setShowSettings(!showSettings)}>Settings</button>
@@ -172,7 +180,13 @@ export default function App() {
 
 async function openDoc() {
   try {
-    const f = await desktop?.openDocument();
+    if (!desktop) {
+      const f = await pickFileToOpen();
+      // an imported Typst file is a new document with no file of its own
+      if (f && loadFile(f.text, undefined, f.name) && /\.json$/i.test(f.name)) f.keep(useStore.getState().docId);
+      return;
+    }
+    const f = await desktop.openDocument();
     if (f) loadFile(f.text, f.path);
   } catch (e) {
     alert('Could not open that file: ' + e);
@@ -191,12 +205,16 @@ function reloadFromDisk(docId: string, text: string) {
   } catch { /* half-written or not a document: wait for the next change */ }
 }
 
-/** Desktop: writes to the document's file (asking once for a path); browser: downloads it. */
+/** Writes to the document's file, asking once where it is. A browser that cannot write to files downloads it instead. */
 async function saveDoc(saveAs: boolean) {
   const { doc, docId } = useStore.getState();
   const name = `${slug(doc.title)}.proof.json`;
   const text = JSON.stringify(doc, null, 2);
-  if (!desktop) { download(name, text, 'application/json'); return; }
+  if (!desktop) {
+    if (!canSaveToFile()) { download(name, text, 'application/json'); return; }
+    try { await saveToFile(docId, text, name, saveAs); } catch (e) { alert('Could not save: ' + e); }
+    return;
+  }
   try {
     const p = await desktop.saveDocument(saveAs ? null : docFilePath(docId), text, name);
     if (p) {
