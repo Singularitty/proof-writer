@@ -7,4 +7,6 @@ export default defineConfig({
   worker: { format: 'es' },
   optimizeDeps: { exclude: ['@myriaddreamin/typst-ts-web-compiler', '@myriaddreamin/typst-ts-renderer'] },
   build: { target: 'es2022', chunkSizeWarningLimit: 4000 },
+  // mod/ holds a Claude Code plugin whose tests run under `claude plugin test`
+  test: { exclude: ['mod/**', 'node_modules/**', 'dist/**', 'release/**'] },
 });

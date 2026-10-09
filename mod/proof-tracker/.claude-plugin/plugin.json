@@ -1,0 +1,9 @@
+{
+  "name": "proof-tracker",
+  "version": "0.1.0",
+  "description": "Tracks a Proof Writer document: missing cases, broken references and unfinished proofs, in a pane and in Claude's context",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Singularitty"
+  }
+}

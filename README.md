@@ -28,6 +28,10 @@ back to the file you opened, Ctrl+Shift+S is Save As, and PDF/`.typ`/`.tex`
 exports ask where to save. Open PDF hands the PDF to your system viewer. The
 browser-storage autosave and the Documents tab still work as before.
 
+If the file behind the open document changes on disk (another program edits it,
+or you pull a newer version), the app reloads it. If you have unsaved edits, it
+asks first whether to reload or keep yours; a reload is one undo step.
+
 ```sh
 npm run electron:dev     # build and launch the desktop app
 npm run electron:build   # installers for the current OS, in release/
@@ -142,6 +146,65 @@ is stored only in this browser and sent only to `api.github.com`.
 * **LaTeX**: an `article` using `amsthm`, `mathpartir` (rules and trees),
   `stmaryrd` and `cleveref`. Compiles with `pdflatex`.
 
+## Checking a document
+
+The **Tracker** tab in the sidebar checks the open document as you type. It
+lists each statement with its problems and shows the number of errors and
+warnings on the tab. Clicking a problem jumps to the block it is in.
+
+`npm run check -- document.json` runs the same checks on a saved document and
+prints the report as JSON.
+
+| Check | Reported as |
+| --- | --- |
+| `[[reference]]` that names no statement or rule | `dangling-ref` |
+| Label or rule name used twice | `duplicate-label`, `duplicate-rule` |
+| Statements whose proofs depend on each other in a circle | `cycle` |
+| Lemma nothing refers to | `unused` |
+| Theorem, lemma, corollary or proposition with no proof | `no-proof` |
+| Rule with no case in a case analysis, or with two | `missing-case`, `duplicate-case` |
+| Case with nothing in it, or citing a rule of another judgment | `empty-case`, `foreign-case` |
+| Proof tree with open leaves, elided derivations or unsolved unknowns | `open-leaf`, `elided`, `unknowns` |
+| Proof tree step whose rule was deleted | `rule-missing` |
+| Proof tree step whose judgment no longer matches its rule's conclusion, or with the wrong number of premises | `rule-drift` |
+
+A case analysis is checked against one rules block. The checker finds it by
+matching the math in the intro ("by induction on the derivation of
+$\Gamma \vdash e : \tau$") against each block's judgment form, and failing that
+by the rules the case titles cite. If neither identifies a block, coverage is
+not checked. In the Tracker tab, the dropdown beside a case analysis shows the
+block that was found and lets you choose another. Choosing one, or pressing
+**confirm**, records it in the document, and a recorded block is used as it is. A case
+covers a rule when its title names it, as `[[T-App]]` or as plain `T-App`.
+
+The report also lists every statement with the labels its proof cites, and
+every case analysis with its covered and missing rules.
+
+### In Claude Code
+
+`mod/proof-tracker` is a Claude Code plugin for working on a document with
+Claude. `/proofs path/to/document.json` starts tracking a saved document:
+
+* a pane lists the same statements and problems as the Tracker tab, and is
+  refreshed when the file changes;
+* Claude is given the current list of problems, and after each edit it makes to
+  the document it is told what that edit fixed and what it broke;
+* for a case analysis the checker could not place, Claude reads the statement
+  and the intro and the pane offers its answer with **Accept** and **Dismiss**.
+  Accept writes it into the document; nothing is written otherwise.
+
+`/proofs` reopens the pane and `/proofs off` stops. The plugin runs the checker
+from this repository, which it expects at `~/Projects/proof-writer`; set
+`PROOF_WRITER_DIR` if it is elsewhere. Load it with
+`claude --plugin-dir mod/proof-tracker`, and test it with
+`claude plugin test mod/proof-tracker`.
+
+### Limits
+
+Not checked: induction on the structure of a term or type (cases drawn from a
+grammar), whether the premises of a proof tree step fit together, and whether
+the prose of a proof is correct.
+
 ## Development
 
 ```sh
@@ -156,6 +219,9 @@ Source layout:
 * `src/latex` — LaTeX math tokenizer/parser, LaTeX→Typst converter, macro
   expansion, rule matching and unification
 * `src/export` — prose format, Typst and LaTeX exporters
+* `src/check` — document checks, their arrangement for the Tracker tab, and the
+  command-line entry
+* `mod/proof-tracker` — the Claude Code plugin
 * `src/components` — the editor UI (React)
 * `src/preview` — Typst compiler worker and SVG preview
 * `electron` — desktop shell: window, menu, native file dialogs (`main.cjs`),
