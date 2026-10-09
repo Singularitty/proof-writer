@@ -461,3 +461,11 @@ body { overflow-x: auto; }
 .block-type { cursor: grab; }
 .block.drop-before { box-shadow: 0 -3px 0 var(--accent); }
 .block.drop-after { box-shadow: 0 3px 0 var(--accent); }
+
+/* reordering the premises of a rule */
+.premise { border-radius: 5px; }
+.premise .drag-grip { opacity: 0; padding: 0 2px; }
+.premise:hover .drag-grip, .premise:focus-within .drag-grip { opacity: 1; }
+.premise.dragging { opacity: 0.45; }
+.premise.drop-before { box-shadow: -3px 0 0 var(--accent); }
+.premise.drop-after { box-shadow: 3px 0 0 var(--accent); }

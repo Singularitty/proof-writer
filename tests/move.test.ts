@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { moveBlock } from '../src/model/move';
+import { moveBlock, moveWithin } from '../src/model/move';
 import type { Block } from '../src/model/types';
 
 const text = (id: string): Block => ({ id, type: 'text', text: id });
@@ -59,5 +59,29 @@ describe('moving a block by dragging', () => {
     const d = doc();
     expect(moveBlock(d, 'nope', 'a', 'before')).toBe(false);
     expect(moveBlock(d, 'a', 'nope', 'before')).toBe(false);
+  });
+});
+
+describe('moving an item within a list', () => {
+  const xs = () => ['a', 'b', 'c', 'd'];
+  it('puts it before or after another item', () => {
+    const l = xs();
+    expect(moveWithin(l, 3, 0, 'before')).toBe(true);
+    expect(l).toEqual(['d', 'a', 'b', 'c']);
+    const m = xs();
+    expect(moveWithin(m, 0, 2, 'after')).toBe(true);
+    expect(m).toEqual(['b', 'c', 'a', 'd']);
+    const n = xs();
+    expect(moveWithin(n, 1, 3, 'before')).toBe(true);
+    expect(n).toEqual(['a', 'c', 'b', 'd']);
+  });
+  it('does nothing when it is already there or the positions do not exist', () => {
+    const l = xs();
+    expect(moveWithin(l, 1, 1, 'before')).toBe(false);
+    expect(moveWithin(l, 1, 2, 'before')).toBe(false);
+    expect(moveWithin(l, 2, 1, 'after')).toBe(false);
+    expect(moveWithin(l, 9, 0, 'before')).toBe(false);
+    expect(moveWithin(l, 0, 9, 'after')).toBe(false);
+    expect(l).toEqual(xs());
   });
 });

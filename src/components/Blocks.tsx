@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Block, BlockType, CaseItem, GrammarProduction, Rule, TheoremKind } from '../model/types';
 import { THEOREM_LABEL } from '../model/types';
 import { findBlockList, updateBlock, useStore } from '../store';
-import { moveBlock } from '../model/move';
+import { moveBlock, moveWithin } from '../model/move';
 import { uncoveredRules } from '../check/coverage';
 import { cloneFresh, uid } from '../model/util';
 import { newNode, allRules } from '../model/tree';
@@ -321,6 +321,65 @@ function RulesEditor({ b }: { b: B<'rules'> }) {
   );
 }
 
+/** The premises of the rule being edited. They can be reordered by dragging the grip or with the arrows. */
+function Premises({ rule, set }: { rule: Rule; set: (f: (r: Rule) => void, key?: string) => void }) {
+  const [from, setFrom] = useState<number | null>(null);
+  const [over, setOver] = useState<{ i: number; place: 'before' | 'after' } | null>(null);
+  const placeAt = (e: React.DragEvent): 'before' | 'after' => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return e.clientX < r.left + r.width / 2 ? 'before' : 'after';
+  };
+  const end = () => { setFrom(null); setOver(null); };
+  const last = rule.premises.length - 1;
+  return (
+    <div className="premises">
+      {rule.premises.map((p, i) => (
+        <span
+          key={i}
+          className={'premise' + (from === i ? ' dragging' : '') + (over?.i === i && from !== null && from !== i ? ' drop-' + over.place : '')}
+          onDragOver={(e) => {
+            if (from === null) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const place = placeAt(e);
+            if (over?.i !== i || over.place !== place) setOver({ i, place });
+          }}
+          onDrop={(e) => {
+            if (from === null) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const place = placeAt(e);
+            const f = from;
+            end();
+            set((r) => { moveWithin(r.premises, f, i, place); });
+          }}
+        >
+          {rule.premises.length > 1 && (
+            <span
+              className="drag-grip" role="button" title="Drag to reorder" aria-label="Drag to reorder" draggable
+              onDragStart={(e) => {
+                setFrom(i);
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', p);
+                if (e.currentTarget.parentElement) e.dataTransfer.setDragImage(e.currentTarget.parentElement, 10, 10);
+                e.stopPropagation();
+              }}
+              onDragEnd={end}
+            >⠿</span>
+          )}
+          <MathField value={p} placeholder="premise" startEditing={!p && i === last && !rule.conclusion} onChange={(v) => set((r) => { r.premises[i] = v; }, `rp${rule.id}${i}`)} />
+          {rule.premises.length > 1 && <>
+            <button aria-label="Move earlier" title="Move earlier" className="mini" disabled={i === 0} onClick={() => set((r) => { moveWithin(r.premises, i, i - 1, 'before'); })}>←</button>
+            <button aria-label="Move later" title="Move later" className="mini" disabled={i === last} onClick={() => set((r) => { moveWithin(r.premises, i, i + 1, 'after'); })}>→</button>
+          </>}
+          <button aria-label="Remove" title="Remove" className="mini" onClick={() => set((r) => { r.premises.splice(i, 1); })}>×</button>
+        </span>
+      ))}
+      <button className="mini add" onClick={() => set((r) => { r.premises.push(''); })}>＋ premise</button>
+    </div>
+  );
+}
+
 function RuleCard({ rule, editing, onEdit, set, remove, move, duplicate }: {
   rule: Rule; editing: boolean; onEdit: () => void;
   set: (f: (r: Rule) => void, key?: string) => void; remove: () => void; move: (d: -1 | 1) => void; duplicate: () => void;
@@ -341,15 +400,7 @@ function RuleCard({ rule, editing, onEdit, set, remove, move, duplicate }: {
         </div>
         <div className="row">
           <label>Premises</label>
-          <div className="premises">
-            {rule.premises.map((p, i) => (
-              <span key={i} className="premise">
-                <MathField value={p} placeholder="premise" startEditing={!p && i === rule.premises.length - 1 && !rule.conclusion} onChange={(v) => set((r) => { r.premises[i] = v; }, `rp${rule.id}${i}`)} />
-                <button aria-label="Remove" title="Remove" className="mini" onClick={() => set((r) => { r.premises.splice(i, 1); })}>×</button>
-              </span>
-            ))}
-            <button className="mini add" onClick={() => set((r) => { r.premises.push(''); })}>＋ premise</button>
-          </div>
+          <Premises rule={rule} set={set} />
         </div>
         <div className="row">
           <label>Conclusion</label>

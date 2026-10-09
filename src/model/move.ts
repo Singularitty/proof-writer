@@ -39,3 +39,17 @@ export function moveBlock(blocks: Block[], id: string, target: string, place: 'b
   to.splice(to.findIndex((b) => b.id === target) + (place === 'after' ? 1 : 0), 0, block);
   return true;
 }
+
+/**
+ * Moves the item at `from` to just before or after the item at `target`, in
+ * place. Returns false, changing nothing, when it is already there or either
+ * position does not exist.
+ */
+export function moveWithin<T>(list: T[], from: number, target: number, place: 'before' | 'after'): boolean {
+  if (from < 0 || from >= list.length || target < 0 || target >= list.length || from === target) return false;
+  if (place === 'before' ? target === from + 1 : target === from - 1) return false;
+  const [item] = list.splice(from, 1);
+  const t = target > from ? target - 1 : target;
+  list.splice(place === 'after' ? t + 1 : t, 0, item);
+  return true;
+}
