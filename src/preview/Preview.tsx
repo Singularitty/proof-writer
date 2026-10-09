@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { exportTypst } from '../export/typst';
 import { exportLatex } from '../export/latex';
-import { compilePdf, livePages, pageHeights, renderLive } from './compile';
+import { compilePdf, livePages, pageHeights, redrawFromScratch, renderLive } from './compile';
 import { PAGE_GAP, locate, pageTops, totalHeight } from './pages';
 import { anchorSpan, blockAt, type Anchor } from './anchors';
 import { jumpToBlock } from '../components/Tracker';
@@ -30,12 +30,18 @@ export function Preview() {
   const [status, setStatus] = useState<{ state: 'loading' | 'ok' | 'error'; msg: string }>({ state: 'loading', msg: 'Loading Typst compiler…' });
   const [diags, setDiags] = useState<string[]>([]);
   const latest = useRef(0);
+  /** Bumped by the Recompile button to run the render again. */
+  const [again, setAgain] = useState(0);
+  const docId = useStore((s) => s.docId);
+  const drawnDoc = useRef<string | null>(null);
 
   useEffect(() => {
     const id = ++latest.current;
     let cancelled = false;
     (async () => {
       if (!pageHeights().length) setStatus({ state: 'loading', msg: 'Loading Typst compiler (first time only)…' });
+      // another document is not a change to this one: draw it afresh
+      if (drawnDoc.current !== docId) { drawnDoc.current = docId; redrawFromScratch(); }
       // the drawing itself is updated in place by renderLive, whether or not this result is still the newest
       const r = await renderLive(anchored);
       if (r.ok) anchors.current = r.anchors;
@@ -50,7 +56,7 @@ export function Preview() {
       setStatus({ state: 'ok', msg: `Rendered in ${Math.round(r.ms)} ms` });
     })().catch((e) => setStatus({ state: 'error', msg: String(e) }));
     return () => { cancelled = true; };
-  }, [anchored]); // eslint-disable-line
+  }, [anchored, again]); // eslint-disable-line
 
   // the drawing lives outside React; show it here while the PDF tab is open
   const host = useRef<HTMLDivElement>(null);
@@ -132,6 +138,7 @@ export function Preview() {
         <span className="grow" />
         {tab === 'pdf' && (
           <>
+            <button onClick={() => { redrawFromScratch(); setStatus({ state: 'loading', msg: 'Recompiling…' }); setAgain((n) => n + 1); }} title="Compile the whole document again and redraw the preview from scratch" aria-label="Recompile">↻ Recompile</button>
             <button onClick={openPdf} title="Open the PDF in a new tab">Open PDF</button>
             <button onClick={downloadPdf}>⤓ PDF</button>
           </>

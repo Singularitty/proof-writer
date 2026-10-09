@@ -143,6 +143,11 @@ export type LiveResult =
   | { ok: true; diagnostics: string[]; ms: number; anchors: Anchor[] }
   | { ok: false; diagnostics: string[] };
 
+/** Makes the next render start over: the compiler sends the whole document and the page is drawn afresh. */
+export function redrawFromScratch() {
+  needFull = true;
+}
+
 // Changes are applied one at a time, in the order they were compiled.
 let applying: Promise<unknown> = Promise.resolve();
 
