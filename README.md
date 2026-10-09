@@ -60,7 +60,7 @@ that block's output and tints it for a moment.
 | Block | What it is |
 | --- | --- |
 | Text | Paragraphs: `$math$`, `$$display$$`, `**bold**`, `*italic*`, `- lists`, `[[references]]`, `{{snippets}}` |
-| Heading | Numbered section heading |
+| Section, Subsection, Sub-subsection | Numbered heading at level 1, 2 or 3; a level-1 heading starts a new section |
 | Grammar | BNF table: category, metavariable, alternatives |
 | Rules | Inference rules (name, premises, conclusion, side condition) and an optional boxed judgment form |
 | Proof tree | A derivation built by clicking |

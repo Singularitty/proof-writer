@@ -11,9 +11,11 @@ import { useNumbering } from './ProseView';
 
 // ---------- block factory ----------
 
-export const BLOCK_TYPES: { type: BlockType; label: string; hint: string }[] = [
+export const BLOCK_TYPES: { type: BlockType; label: string; hint: string; /** Heading level, for the heading entries. */ level?: 1 | 2 | 3 }[] = [
   { type: 'text', label: 'Text', hint: 'Paragraphs with $math$' },
-  { type: 'heading', label: 'Heading', hint: 'Section title' },
+  { type: 'heading', level: 1, label: 'Section', hint: 'H1 heading; starts a new section' },
+  { type: 'heading', level: 2, label: 'Subsection', hint: 'H2 heading inside this section' },
+  { type: 'heading', level: 3, label: 'Sub-subsection', hint: 'H3 heading' },
   { type: 'grammar', label: 'Grammar', hint: 'BNF syntax definitions' },
   { type: 'rules', label: 'Rules', hint: 'Inference rules' },
   { type: 'derivation', label: 'Proof tree', hint: 'A derivation, built by clicking' },
@@ -22,10 +24,10 @@ export const BLOCK_TYPES: { type: BlockType; label: string; hint: string }[] = [
   { type: 'raw', label: 'Raw code', hint: 'Verbatim Typst + LaTeX' },
 ];
 
-export function makeBlock(type: BlockType): Block {
+export function makeBlock(type: BlockType, level: 1 | 2 | 3 = 1): Block {
   const id = uid();
   switch (type) {
-    case 'heading': return { id, type, level: 1, text: '' };
+    case 'heading': return { id, type, level, text: '' };
     case 'text': return { id, type, text: '' };
     case 'grammar': return { id, type, title: '', rows: [{ id: uid(), category: '', metavar: '', alternatives: [''] }] };
     case 'rules': return { id, type, title: '', judgment: '', rules: [{ id: uid(), name: '', premises: [''], conclusion: '' }] };
@@ -64,7 +66,7 @@ function InsertBar({ before, after, nested, emptyListOf }: { before?: string; af
   useEffect(() => {
     if (!open) return;
     const r = bar.current?.getBoundingClientRect();
-    if (r) setUp(window.innerHeight - r.bottom < 360 && r.top > 360);
+    if (r) setUp(window.innerHeight - r.bottom < 450 && r.top > 450);
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     const onDown = (e: MouseEvent) => { if (!bar.current?.contains(e.target as Node)) setOpen(false); };
     window.addEventListener('keydown', onKey);
@@ -72,8 +74,8 @@ function InsertBar({ before, after, nested, emptyListOf }: { before?: string; af
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mousedown', onDown); };
   }, [open]);
   const update = useStore((s) => s.update);
-  const insert = (type: BlockType) => {
-    const nb = makeBlock(type);
+  const insert = (type: BlockType, level?: 1 | 2 | 3) => {
+    const nb = makeBlock(type, level);
     update((d) => {
       const ref = before ?? after;
       if (ref) {
@@ -96,7 +98,7 @@ function InsertBar({ before, after, nested, emptyListOf }: { before?: string; af
       {open && (
         <div className={'insert-menu' + (up ? ' up' : '')} onMouseLeave={() => setOpen(false)}>
           {types.map((t) => (
-            <button key={t.type} onClick={() => insert(t.type)}>
+            <button key={t.type + (t.level ?? '')} onClick={() => insert(t.type, t.level)}>
               <strong>{t.label}</strong>
               <span>{t.hint}</span>
             </button>

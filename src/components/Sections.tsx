@@ -54,6 +54,17 @@ export function SectionTabs() {
     if (s) setSection(s.id);
   }, [selected, blocks]); // eslint-disable-line
 
+  // The heading of the shown section stopped being an H1 (its level was changed) or was
+  // deleted: stay with the selected block, in whichever section holds it now.
+  const stored = useStore((s) => s.section);
+  useEffect(() => {
+    if (!stored || current) return;
+    const i = selected ? topLevelIndex(blocks, selected) : -1;
+    const s = sections.find((x) => i >= x.start && i < x.end);
+    setSection(s ? s.id : null);
+    if (s && selected) setTimeout(() => document.getElementById('block-' + selected)?.scrollIntoView({ block: 'center' }), 50);
+  }, [stored, current]); // eslint-disable-line
+
   const addSection = () => {
     const h = makeBlock('heading');
     if (h.type === 'heading') { h.level = 1; h.text = ''; }
