@@ -87,8 +87,9 @@ export interface TypstExport {
   warnings: string[];
 }
 
-export function exportTypst(doc: Doc): TypstExport {
+export function exportTypst(doc: Doc, opts: { anchors?: boolean } = {}): TypstExport {
   const ctx = makeCtx(doc);
+  ctx.anchors = opts.anchors;
   const out: string[] = [];
   const s = doc.settings;
   out.push(`#set document(title: ${str(doc.title)}${doc.author ? `, author: ${str(doc.author)}` : ''})`);
@@ -125,8 +126,14 @@ function m(src: string, ctx: ExportCtx): string {
   return code ? `$${code}$` : '[]';
 }
 
+/** Invisible, and read back with a query: the page and height at which a block starts. */
+function anchor(id: string): string {
+  return `#context [#metadata((id: ${str(id)}, page: here().page(), y: here().position().y.pt())) <pw-src>]`;
+}
+
 function blocks(bs: Block[], ctx: ExportCtx): string {
-  return bs.map((b) => block(b, ctx)).filter(Boolean).join('\n\n');
+  if (!ctx.anchors) return bs.map((b) => block(b, ctx)).filter(Boolean).join('\n\n');
+  return bs.map((b) => { const s = block(b, ctx); return s ? anchor(b.id) + '\n' + s : anchor(b.id); }).join('\n\n');
 }
 
 function block(b: Block, ctx: ExportCtx): string {

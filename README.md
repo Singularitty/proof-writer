@@ -52,6 +52,9 @@ editor show one section at a time (or **All** for the whole document), and
 **＋ Section** adds a new one after the current section. Clicking an outline item
 jumps to its section. The preview and exports always cover the whole document.
 
+Clicking anywhere in the preview selects the block that produced that part of
+the page and scrolls the editor to it, switching section if needed.
+
 | Block | What it is |
 | --- | --- |
 | Text | Paragraphs: `$math$`, `$$display$$`, `**bold**`, `*italic*`, `- lists`, `[[references]]`, `{{snippets}}` |

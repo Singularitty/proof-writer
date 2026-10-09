@@ -4,6 +4,8 @@ import { exportTypst } from '../export/typst';
 import { exportLatex } from '../export/latex';
 import { compileTypst, vectorToSvg } from './compile';
 import { separatePages } from './pages';
+import { blockAt, type Anchor } from './anchors';
+import { jumpToBlock } from '../components/Tracker';
 import { download, slug } from '../util/download';
 import { desktop } from '../util/desktop';
 
@@ -21,6 +23,9 @@ export function Preview() {
     return () => clearTimeout(t);
   }, [doc]);
   const typst = useMemo(() => exportTypst(debounced), [debounced]);
+  // what the preview compiles: the same document, with a mark where each block starts
+  const anchored = useMemo(() => exportTypst(debounced, { anchors: true }).source, [debounced]);
+  const anchors = useRef<Anchor[]>([]);
   const latex = useMemo(() => (tab === 'latex' ? exportLatex(debounced) : null), [debounced, tab]);
 
   const [svg, setSvg] = useState<string>('');
@@ -33,7 +38,7 @@ export function Preview() {
     let cancelled = false;
     (async () => {
       if (!svg) setStatus({ state: 'loading', msg: 'Loading Typst compiler (first time only)…' });
-      const r = await compileTypst(typst.source, 'vector');
+      const r = await compileTypst(anchored, 'vector');
       if (cancelled || id !== latest.current) return;
       if (!r.ok) {
         setDiags(r.diagnostics);
@@ -42,12 +47,24 @@ export function Preview() {
       }
       const s = separatePages(await vectorToSvg(r.data), PAGE_GAP);
       if (cancelled || id !== latest.current) return;
+      anchors.current = r.anchors;
       setSvg(s);
       setDiags(r.diagnostics.filter((d) => !/^warning/.test(d)));
       setStatus({ state: 'ok', msg: `Rendered in ${Math.round(r.ms)} ms` });
     })().catch((e) => setStatus({ state: 'error', msg: String(e) }));
     return () => { cancelled = true; };
-  }, [typst.source]); // eslint-disable-line
+  }, [anchored]); // eslint-disable-line
+
+  /** Selects the block whose output was clicked. */
+  const goToSource = (e: React.MouseEvent) => {
+    const papers = [...e.currentTarget.querySelectorAll('rect.pw-paper')];
+    const page = papers.findIndex((p) => { const r = p.getBoundingClientRect(); return e.clientY >= r.top && e.clientY <= r.bottom && e.clientX >= r.left && e.clientX <= r.right; });
+    if (page < 0) return;
+    const r = papers[page].getBoundingClientRect();
+    const y = ((e.clientY - r.top) / r.height) * Number(papers[page].getAttribute('height'));
+    const id = blockAt(anchors.current, page + 1, y);
+    if (id) jumpToBlock(id);
+  };
 
   const name = slug(doc.title);
   const downloadPdf = async () => {
@@ -103,7 +120,7 @@ export function Preview() {
               <div className="dim">Check the Typst tab; a raw block or an unusual LaTeX command is the usual cause.</div>
             </div>
           )}
-          <div className="pages" dangerouslySetInnerHTML={{ __html: svg }} />
+          <div className="pages" onClick={goToSource} title="Click to go to that part of the document" dangerouslySetInnerHTML={{ __html: svg }} />
         </div>
       )}
       {tab !== 'pdf' && <pre className="code">{code}</pre>}

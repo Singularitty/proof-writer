@@ -9,6 +9,8 @@ export interface ExportCtx {
   labels: Map<string, TheoremKind>;
   ruleNames: Set<string>;
   warnings: string[];
+  /** Mark where each block starts, so the preview can map a click back to it. */
+  anchors?: boolean;
 }
 
 export function sanitizeLabel(s: string): string {

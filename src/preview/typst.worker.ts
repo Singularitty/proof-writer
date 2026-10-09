@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { createTypstCompiler, loadFonts, type TypstCompiler } from '@myriaddreamin/typst.ts';
+import type { Anchor } from './anchors';
 import compilerWasm from '@myriaddreamin/typst-ts-web-compiler/pkg/typst_ts_web_compiler_bg.wasm?url';
 
 const FONTS = [
@@ -9,7 +10,7 @@ const FONTS = [
 
 export type WorkerRequest = { id: number; source: string; format: 'vector' | 'pdf'; fontBase: string };
 export type WorkerResponse =
-  | { id: number; ok: true; data: Uint8Array; diagnostics: string[]; ms: number }
+  | { id: number; ok: true; data: Uint8Array; diagnostics: string[]; ms: number; /** Where each block starts, when the source carries anchors. */ anchors: Anchor[] }
   | { id: number; ok: false; diagnostics: string[] };
 
 let compilerP: Promise<TypstCompiler> | null = null;
@@ -47,7 +48,17 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
       return;
     }
     const data = r.result;
-    self.postMessage({ id, ok: true, data, diagnostics, ms: performance.now() - t0 } satisfies WorkerResponse, [data.buffer]);
+    let anchors: Anchor[] = [];
+    if (format === 'vector' && source.includes('<pw-src>')) {
+      try {
+        // a query needs a compiled snapshot of its own; Typst's cache makes the second compile cheap
+        anchors = await c.runWithWorld({ mainFilePath: '/main.typ' }, async (world) => {
+          await world.compile({ diagnostics: 'none' });
+          return ((await world.query({ selector: '<pw-src>', field: 'value' })) as Anchor[]) ?? [];
+        });
+      } catch { /* without anchors, clicking the preview does nothing */ }
+    }
+    self.postMessage({ id, ok: true, data, diagnostics, ms: performance.now() - t0, anchors } satisfies WorkerResponse, [data.buffer]);
   } catch (e) {
     self.postMessage({ id, ok: false, diagnostics: [String(e instanceof Error ? e.message : e)] } satisfies WorkerResponse);
   }
