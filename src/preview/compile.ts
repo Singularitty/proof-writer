@@ -55,15 +55,29 @@ function getRenderer(): Promise<TypstRenderer> {
   return rendererP;
 }
 
-let sessionP: Promise<RenderSession> | null = null;
-function getSession(r: TypstRenderer): Promise<RenderSession> {
-  if (!sessionP) {
-    sessionP = new Promise((resolve) => {
-      // the session is freed when this callback's promise settles, so it never does
-      void r.runWithSession((s) => { resolve(s); return new Promise<void>(() => {}); });
-    });
-  }
-  return sessionP;
+/** The renderer's copy of the document, and a way to let go of it. */
+let session: { s: RenderSession; free: () => void } | null = null;
+
+/** Starts a new session, dropping the one before. A session's first drawing is complete; later ones describe changes. */
+function newSession(r: TypstRenderer): Promise<RenderSession> {
+  session?.free();
+  session = null;
+  return new Promise((resolve) => {
+    // the session lives until `free` settles the callback's promise
+    void r.runWithSession((s) => new Promise<void>((free) => { session = { s, free }; resolve(s); }));
+  });
+}
+
+/** The renderer's own style rules, which its change-by-change drawings leave out. Added to the page once. */
+async function addBaseStyles(r: TypstRenderer, s: RenderSession) {
+  if (document.getElementById('pw-typst-css')) return;
+  const only = await r.renderSvg({ renderSession: s, data_selection: { body: false, defs: false, css: true, js: false } });
+  const t = document.createElement('template');
+  t.innerHTML = only;
+  const style = document.createElement('style');
+  style.id = 'pw-typst-css';
+  style.textContent = [...t.content.querySelectorAll('style')].map((x) => x.textContent ?? '').join('\n');
+  document.head.appendChild(style);
 }
 
 /** The element the preview is drawn in. It outlives the component showing it, so coming back to the PDF tab costs nothing. */
@@ -73,10 +87,8 @@ export const livePages: HTMLDivElement | null = typeof document === 'undefined' 
 let heights: number[] = [];
 export const pageHeights = () => heights;
 
-/** True when the renderer's copy of the document can no longer be trusted, and the compiler must send it whole. */
+/** True when the page or the renderer's copy of the document cannot be trusted, and the compiler must send the document whole. */
 let needFull = true;
-/** True while the page shows exactly what the renderer last described, so the next change can be patched in. */
-let pageInStep = false;
 
 /** Spreads the pages out as separate sheets. The patch puts them back edge to edge each time. */
 function layOut(svg: SVGElement) {
@@ -95,25 +107,22 @@ function layOut(svg: SVGElement) {
   host.style.setProperty('--pw-period', `${total ? ((heights[0] + PAGE_GAP) / total) * 100 : 100}%`);
 }
 
-async function apply(r: TypstRenderer, session: RenderSession, res: Extract<WorkerResponse, { ok: true }>) {
+async function apply(r: TypstRenderer, res: Extract<WorkerResponse, { ok: true }>) {
   const host = livePages!;
-  r.manipulateData({ renderSession: session, action: res.full ? 'reset' : 'merge', data: res.data });
-  // the drawing, described in terms of the one before it
-  const drawing = r.renderSvgDiff({ renderSession: session });
-  const current = host.firstElementChild as SVGElement | null;
-  let patched = false;
-  if (current && pageInStep) {
-    try {
-      const t = document.createElement('template');
-      t.innerHTML = drawing;
-      patchRoot(current, t.content.firstElementChild as SVGElement);
-      patched = true;
-    } catch { /* the page had drifted from what the renderer assumed: draw it whole below */ }
-  }
-  if (!patched) {
-    pageInStep = false;
-    host.innerHTML = await r.renderSvg({ renderSession: session });
-    pageInStep = true;
+  if (res.full || !session) {
+    // A whole document goes into a new session, whose first drawing is complete.
+    // The page has to start from that drawing: later changes are patches to it.
+    const s = await newSession(r);
+    r.manipulateData({ renderSession: s, action: 'reset', data: res.data });
+    host.innerHTML = r.renderSvgDiff({ renderSession: s });
+    await addBaseStyles(r, s);
+  } else {
+    const s = session.s;
+    r.manipulateData({ renderSession: s, action: 'merge', data: res.data });
+    // the new drawing, described in terms of the one on the page
+    const t = document.createElement('template');
+    t.innerHTML = r.renderSvgDiff({ renderSession: s });
+    patchRoot(host.firstElementChild as SVGElement, t.content.firstElementChild as SVGElement);
   }
   layOut(host.firstElementChild as SVGElement);
 }
@@ -128,18 +137,18 @@ let applying: Promise<unknown> = Promise.resolve();
 /** Compiles `source` and brings the preview up to date with it. */
 export async function renderLive(source: string): Promise<LiveResult> {
   const r = await getRenderer();
-  const session = await getSession(r);
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await ask({ kind: 'live', source, full: needFull });
     if (!res.ok) return res;
     const done = applying.then(async () => {
-      // a change can only be merged into the document it was made against
+      // a change can only be applied to the document it was made against
       if (needFull && !res.full) return false;
       try {
-        await apply(r, session, res);
+        await apply(r, res);
         needFull = false;
         return true;
       } catch {
+        // the page and the session may now disagree: start over from the whole document
         needFull = true;
         return false;
       }

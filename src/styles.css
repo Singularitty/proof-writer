@@ -469,3 +469,17 @@ body { overflow-x: auto; }
 .premise.dragging { opacity: 0.45; }
 .premise.drop-before { box-shadow: -3px 0 0 var(--accent); }
 .premise.drop-after { box-shadow: 3px 0 0 var(--accent); }
+
+/* The rule form stays inside its block however big the rule is: premises wrap,
+   the preview wraps its premises, and long source or error text breaks. */
+.rule-card.editing { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.rule-form .row > :not(label) { min-width: 0; max-width: 100%; }
+.rule-form .premises { flex: 1 1 0; }
+.rule-form .premise { max-width: 100%; min-width: 0; }
+.rule-form .mathfield { max-width: 100%; }
+.rule-form .mathfield.editing { min-width: min(260px, 100%); }
+.rule-form .preview-row { justify-content: safe center; overflow-x: auto; }
+.tex-error { white-space: normal; overflow-wrap: anywhere; }
+.mathfield .math, .mathfield .live { max-width: 100%; }
+/* one formula wider than the form scrolls inside its own field */
+.rule-form .mathfield:not(.editing), .rule-form .mathfield .live { overflow-x: auto; overflow-y: hidden; }
