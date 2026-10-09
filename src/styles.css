@@ -295,7 +295,8 @@ table.grammar td.alts { display: flex; flex-wrap: wrap; gap: 4px; align-items: c
 .preview-bar .tabs { padding: 0; }
 .pdf-wrap { position: relative; flex: 1; overflow: auto; min-height: 0; }
 .pages { padding: 16px; }
-.pages svg { display: block; margin: 0 auto 16px; background: var(--paper); box-shadow: 0 1px 6px var(--shadow); width: 100%; height: auto; }
+.pages svg { display: block; margin: 0 auto 16px; width: 100%; height: auto; }
+.pages svg .pw-paper { fill: var(--paper); filter: drop-shadow(0 1px 3px var(--shadow)); }
 .status { position: sticky; top: 0; z-index: 3; font-size: 12px; padding: 3px 10px; color: var(--dim); background: var(--status-bg); }
 .status.error { color: var(--danger); }
 .status.loading { color: var(--accent); }

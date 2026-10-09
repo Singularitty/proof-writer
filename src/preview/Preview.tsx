@@ -3,8 +3,12 @@ import { useStore } from '../store';
 import { exportTypst } from '../export/typst';
 import { exportLatex } from '../export/latex';
 import { compileTypst, vectorToSvg } from './compile';
+import { separatePages } from './pages';
 import { download, slug } from '../util/download';
 import { desktop } from '../util/desktop';
+
+/** Space between pages in the preview, in points of the page. */
+const PAGE_GAP = 14;
 
 type Tab = 'pdf' | 'typst' | 'latex';
 
@@ -36,7 +40,7 @@ export function Preview() {
         setStatus({ state: 'error', msg: 'Typst reported an error' });
         return;
       }
-      const s = await vectorToSvg(r.data);
+      const s = separatePages(await vectorToSvg(r.data), PAGE_GAP);
       if (cancelled || id !== latest.current) return;
       setSvg(s);
       setDiags(r.diagnostics.filter((d) => !/^warning/.test(d)));
