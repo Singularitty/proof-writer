@@ -142,6 +142,9 @@ export function texToTypst(src: string): ConvertResult {
   return { code: code.trim(), warnings };
 }
 
+
+/** Typst symbols (and characters) of the relation class, which take scripts as limits by default. */
+const RELATION = /^(arrows?|harpoons?|tack|subset|supset|lt|gt|eq|prec|succ|in|approx|tilde|equiv|prop|models|forces|divides|parallel|perp|smile|frown|asymp|multimap|[=<>])(\.|$)/;
 class Conv {
   constructor(private warnings: string[]) {}
 
@@ -256,6 +259,8 @@ class Conv {
           if (n.sub) opts.push('b: ' + this.atomic(n.sub));
           return `attach(${base}, ${opts.join(', ')})`;
         }
+        // Typst sets a script on a relation above or below it; TeX sets it beside.
+        if ((n.sub || n.sup) && RELATION.test(base)) base = `scripts(${base})`;
         let s = base + "'".repeat(n.primes);
         if (n.sub) s += '_' + this.atomic(n.sub);
         if (n.sup) s += '^' + this.atomic(n.sup);
