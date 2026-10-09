@@ -64,6 +64,7 @@ that block's output and tints it for a moment.
 | Grammar | BNF table: category, metavariable, alternatives |
 | Rules | Inference rules (name, premises, conclusion, side condition) and an optional boxed judgment form |
 | Proof tree | A derivation built by clicking |
+| Definition | Name, label and statement, with no proof; rules, a grammar, a proof tree or more text can go inside it |
 | Lemma / Theorem | Kind, name, label, statement and a proof made of nested blocks |
 | Case analysis | "By induction on…" with one case per rule, each with its own nested blocks |
 | Raw code | Verbatim Typst and LaTeX for anything the editor doesn't cover |

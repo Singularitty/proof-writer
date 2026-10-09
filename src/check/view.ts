@@ -101,7 +101,7 @@ export function trackerView(doc: Doc, report: Report): TrackerView {
     else if (p.block.type === 'cases') where = 'case analysis';
     else if (p.caseTitle !== null) where = `case ${p.caseTitle}`;
     else if (isStatement) where = 'statement';
-    else if (g !== loose) where = p.block.type === 'derivation' ? 'proof tree' : 'proof';
+    else if (g !== loose) where = p.block.type === 'derivation' ? 'proof tree' : g.kind === 'definition' ? 'definition' : 'proof';
     else where = p.section ? `${p.section}: ${KIND_WORDS[p.block.type]}` : KIND_WORDS[p.block.type];
     g.issues.push({ ...issue, where, jump: issue.block });
     if (issue.severity === 'error') { errors++; g.status = 'error'; }

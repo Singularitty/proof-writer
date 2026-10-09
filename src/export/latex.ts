@@ -114,8 +114,11 @@ function block(b: Block, ctx: ExportCtx): string {
     case 'theorem': {
       const title = b.title ? `[${inlineText(b.title, ctx)}]` : '';
       const label = b.label ? `\\label{${sanitizeLabel(b.label)}}` : '';
-      let s = `\\begin{${b.kind}}${title}${label}\n${prose(b.statement, ctx)}\n\\end{${b.kind}}`;
-      if (b.proof && b.proof.length) s += `\n\\begin{proof}\n${blocks(b.proof, ctx)}\n\\end{proof}`;
+      // a definition has no proof: the blocks inside it are part of the definition itself
+      const inner = b.proof && b.proof.length ? blocks(b.proof, ctx) : '';
+      const isDef = b.kind === 'definition';
+      let s = `\\begin{${b.kind}}${title}${label}\n${[prose(b.statement, ctx), isDef ? inner : ''].filter(Boolean).join('\n\n')}\n\\end{${b.kind}}`;
+      if (inner && !isDef) s += `\n\\begin{proof}\n${inner}\n\\end{proof}`;
       return s;
     }
     case 'cases': {

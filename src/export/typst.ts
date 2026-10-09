@@ -164,10 +164,12 @@ function block(b: Block, ctx: ExportCtx): string {
       const kind = ctx.doc.settings.numberTheorems === 'shared' ? 'thm' : b.kind;
       const title = b.title ? `, title: [${inlineText(b.title, ctx)}]` : '';
       const stmt = prose(b.statement, ctx);
-      const body = b.kind === 'definition' ? stmt : `#emph[${stmt}]`;
+      // a definition has no proof: the blocks inside it are part of the definition itself
+      const inner = b.proof && b.proof.length ? blocks(b.proof, ctx) : '';
+      const body = b.kind === 'definition' ? [stmt, inner].filter(Boolean).join('\n\n') : `#emph[${stmt}]`;
       const label = b.label ? ` <${sanitizeLabel(b.label)}>` : '';
       let s = `#pw-thm(${str(kind)}, [${sup}]${title})[\n${body}\n]${label}`;
-      if (b.proof && b.proof.length) s += `\n#pw-proof[\n${blocks(b.proof, ctx)}\n]`;
+      if (inner && b.kind !== 'definition') s += `\n#pw-proof[\n${inner}\n]`;
       return s;
     }
     case 'cases': {

@@ -453,3 +453,5 @@ body { overflow-x: auto; }
 @keyframes pdf-mark { 0% { opacity: 0.28; } 60% { opacity: 0.18; } 100% { opacity: 0; } }
 /* the insert menu opens upwards near the bottom of the window */
 .insert-menu.up { top: auto; bottom: 22px; }
+/* what a definition holds besides its statement */
+.def-body { margin-top: 6px; }

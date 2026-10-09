@@ -11,7 +11,7 @@ import { useNumbering } from './ProseView';
 
 // ---------- block factory ----------
 
-export const BLOCK_TYPES: { type: BlockType; label: string; hint: string; /** Heading level, for the heading entries. */ level?: 1 | 2 | 3 }[] = [
+export const BLOCK_TYPES: { type: BlockType; label: string; hint: string; /** Heading level, for the heading entries. */ level?: 1 | 2 | 3; /** Statement kind, for the entries that make one. */ kind?: TheoremKind }[] = [
   { type: 'text', label: 'Text', hint: 'Paragraphs with $math$' },
   { type: 'heading', level: 1, label: 'Section', hint: 'H1 heading; starts a new section' },
   { type: 'heading', level: 2, label: 'Subsection', hint: 'H2 heading inside this section' },
@@ -19,12 +19,13 @@ export const BLOCK_TYPES: { type: BlockType; label: string; hint: string; /** He
   { type: 'grammar', label: 'Grammar', hint: 'BNF syntax definitions' },
   { type: 'rules', label: 'Rules', hint: 'Inference rules' },
   { type: 'derivation', label: 'Proof tree', hint: 'A derivation, built by clicking' },
+  { type: 'theorem', kind: 'definition', label: 'Definition', hint: 'No proof; can hold rules, grammar and text' },
   { type: 'theorem', label: 'Lemma / Theorem', hint: 'Statement with a proof' },
   { type: 'cases', label: 'Case analysis', hint: 'Induction / case split' },
   { type: 'raw', label: 'Raw code', hint: 'Verbatim Typst + LaTeX' },
 ];
 
-export function makeBlock(type: BlockType, level: 1 | 2 | 3 = 1): Block {
+export function makeBlock(type: BlockType, level: 1 | 2 | 3 = 1, kind: TheoremKind = 'lemma'): Block {
   const id = uid();
   switch (type) {
     case 'heading': return { id, type, level, text: '' };
@@ -32,7 +33,9 @@ export function makeBlock(type: BlockType, level: 1 | 2 | 3 = 1): Block {
     case 'grammar': return { id, type, title: '', rows: [{ id: uid(), category: '', metavar: '', alternatives: [''] }] };
     case 'rules': return { id, type, title: '', judgment: '', rules: [{ id: uid(), name: '', premises: [''], conclusion: '' }] };
     case 'derivation': return { id, type, caption: '', root: newNode() };
-    case 'theorem': return { id, type, kind: 'lemma', title: '', label: '', statement: '', proof: [{ id: uid(), type: 'text', text: '' }] };
+    case 'theorem': return kind === 'definition'
+      ? { id, type, kind, title: '', label: '', statement: '' }
+      : { id, type, kind, title: '', label: '', statement: '', proof: [{ id: uid(), type: 'text', text: '' }] };
     case 'cases': return { id, type, intro: '', cases: [{ id: uid(), title: '', body: [{ id: uid(), type: 'text', text: '' }] }] };
     case 'raw': return { id, type, typst: '', latex: '' };
   }
@@ -66,7 +69,7 @@ function InsertBar({ before, after, nested, emptyListOf }: { before?: string; af
   useEffect(() => {
     if (!open) return;
     const r = bar.current?.getBoundingClientRect();
-    if (r) setUp(window.innerHeight - r.bottom < 450 && r.top > 450);
+    if (r) setUp(window.innerHeight - r.bottom < 500 && r.top > 500);
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     const onDown = (e: MouseEvent) => { if (!bar.current?.contains(e.target as Node)) setOpen(false); };
     window.addEventListener('keydown', onKey);
@@ -74,8 +77,8 @@ function InsertBar({ before, after, nested, emptyListOf }: { before?: string; af
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mousedown', onDown); };
   }, [open]);
   const update = useStore((s) => s.update);
-  const insert = (type: BlockType, level?: 1 | 2 | 3) => {
-    const nb = makeBlock(type, level);
+  const insert = (type: BlockType, level?: 1 | 2 | 3, kind?: TheoremKind) => {
+    const nb = makeBlock(type, level, kind);
     update((d) => {
       const ref = before ?? after;
       if (ref) {
@@ -98,7 +101,7 @@ function InsertBar({ before, after, nested, emptyListOf }: { before?: string; af
       {open && (
         <div className={'insert-menu' + (up ? ' up' : '')} onMouseLeave={() => setOpen(false)}>
           {types.map((t) => (
-            <button key={t.type + (t.level ?? '')} onClick={() => insert(t.type, t.level)}>
+            <button key={t.label} onClick={() => insert(t.type, t.level, t.kind)}>
               <strong>{t.label}</strong>
               <span>{t.hint}</span>
             </button>
@@ -346,6 +349,13 @@ function TheoremEditor({ b, fresh }: { b: B<'theorem'>; fresh: boolean }) {
         </span>
       </div>
       <ProseField className="thm-statement" value={b.statement} placeholder="Statement, e.g. If $\Gamma \vdash e : \tau$ and … then …" onChange={(v) => set((x) => { x.statement = v; }, 'ts' + b.id)} startEditing={fresh && !b.statement} />
+      {b.kind === 'definition' && (
+        // no proof: what is inside a definition is part of it
+        <div className="def-body">
+          {b.proof ? <NestedBlocks owner={b.id} blocks={b.proof} path="proof" />
+            : <button className="mini add" onClick={() => set((x) => { x.proof = []; })} title="Put rules, a grammar, a proof tree or more text inside this definition">＋ Add content</button>}
+        </div>
+      )}
       {b.kind !== 'definition' && (
         <div className={'proof' + (b.collapsed ? ' collapsed' : '')}>
           <div className="proof-label">
@@ -364,15 +374,15 @@ function TheoremEditor({ b, fresh }: { b: B<'theorem'>; fresh: boolean }) {
 /** A nested block list whose empty state needs to know its owner. */
 function NestedBlocks({ owner, blocks, path, caseId }: { owner: string; blocks: Block[]; path: 'proof' | 'case'; caseId?: string }) {
   if (blocks.length > 0) return <BlockList blocks={blocks} nested />;
-  const add = (type: BlockType) => {
-    const nb = makeBlock(type);
+  const add = (type: BlockType, kind?: TheoremKind) => {
+    const nb = makeBlock(type, 1, kind);
     if (path === 'proof') updateBlock<'theorem'>(owner, (x) => { (x.proof ??= []).push(nb); });
     else updateBlock<'cases'>(owner, (x) => { x.cases.find((c) => c.id === caseId)?.body.push(nb); });
   };
   return (
     <div className="empty-nested">
       {BLOCK_TYPES.filter((t) => t.type !== 'heading').map((t) => (
-        <button key={t.type} className="mini" onClick={() => add(t.type)}>＋ {t.label}</button>
+        <button key={t.label} className="mini" onClick={() => add(t.type, t.kind)}>＋ {t.label}</button>
       ))}
     </div>
   );
