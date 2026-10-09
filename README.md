@@ -232,7 +232,9 @@ Source layout:
   command-line entry
 * `mod/proof-tracker` — the Claude Code plugin
 * `src/components` — the editor UI (React)
-* `src/preview` — Typst compiler worker and SVG preview
+* `src/preview` — Typst compiler worker and SVG preview. The preview is updated
+  in place: the compiler sends only what an edit changed, and the drawing is
+  patched instead of redrawn
 * `electron` — desktop shell: window, menu, native file dialogs (`main.cjs`),
   and the `window.desktop` bridge (`preload.cjs`)
 * `public/fonts` — New Computer Modern (text and math) and DejaVu Sans Mono, from

@@ -1,20 +1,15 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { exportTypst } from '../export/typst';
 import { exportLatex } from '../export/latex';
-import { compileTypst, vectorToSvg } from './compile';
-import { splitPages, type PreviewDoc, type PreviewPage } from './pages';
+import { compilePdf, livePages, pageHeights, renderLive } from './compile';
+import { PAGE_GAP, locate, pageTops, totalHeight } from './pages';
 import { anchorSpan, blockAt, type Anchor } from './anchors';
 import { jumpToBlock } from '../components/Tracker';
 import { download, slug } from '../util/download';
 import { desktop } from '../util/desktop';
 
 type Tab = 'pdf' | 'typst' | 'latex';
-
-/** One sheet. Its drawing is only handed to the browser again when it changed, which is what keeps typing smooth in a long document. */
-const Page = memo(function Page({ page }: { page: PreviewPage }) {
-  return <svg className="typst-doc pw-page" viewBox={`0 0 ${page.width} ${page.height}`} data-height={page.height} dangerouslySetInnerHTML={{ __html: page.body }} />;
-});
 
 export function Preview() {
   const doc = useStore((s) => s.doc);
@@ -30,7 +25,8 @@ export function Preview() {
   const anchors = useRef<Anchor[]>([]);
   const latex = useMemo(() => (tab === 'latex' ? exportLatex(debounced) : null), [debounced, tab]);
 
-  const [svg, setSvg] = useState<PreviewDoc>({ head: '', pages: [] });
+  /** Counts the times the drawing was brought up to date. */
+  const [drawn, setDrawn] = useState(0);
   const [status, setStatus] = useState<{ state: 'loading' | 'ok' | 'error'; msg: string }>({ state: 'loading', msg: 'Loading Typst compiler…' });
   const [diags, setDiags] = useState<string[]>([]);
   const latest = useRef(0);
@@ -39,32 +35,44 @@ export function Preview() {
     const id = ++latest.current;
     let cancelled = false;
     (async () => {
-      if (!svg.pages.length) setStatus({ state: 'loading', msg: 'Loading Typst compiler (first time only)…' });
-      const r = await compileTypst(anchored, 'vector');
+      if (!pageHeights().length) setStatus({ state: 'loading', msg: 'Loading Typst compiler (first time only)…' });
+      // the drawing itself is updated in place by renderLive, whether or not this result is still the newest
+      const r = await renderLive(anchored);
+      if (r.ok) anchors.current = r.anchors;
       if (cancelled || id !== latest.current) return;
       if (!r.ok) {
         setDiags(r.diagnostics);
         setStatus({ state: 'error', msg: 'Typst reported an error' });
         return;
       }
-      const s = splitPages(await vectorToSvg(r.data));
-      if (cancelled || id !== latest.current) return;
-      anchors.current = r.anchors;
-      setSvg(s);
+      setDrawn((n) => n + 1);
       setDiags(r.diagnostics.filter((d) => !/^warning/.test(d)));
       setStatus({ state: 'ok', msg: `Rendered in ${Math.round(r.ms)} ms` });
     })().catch((e) => setStatus({ state: 'error', msg: String(e) }));
     return () => { cancelled = true; };
   }, [anchored]); // eslint-disable-line
 
+  // the drawing lives outside React; show it here while the PDF tab is open
+  const host = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (tab === 'pdf' && livePages && host.current) host.current.appendChild(livePages);
+  }, [tab]);
+
+  /** The drawing's place on screen and how many pixels one of its points takes. */
+  const geometry = () => {
+    const el = livePages?.firstElementChild;
+    const total = totalHeight(pageHeights(), PAGE_GAP);
+    if (!el || !total) return null;
+    const r = el.getBoundingClientRect();
+    return { r, scale: r.height / total };
+  };
+
   /** Selects the block whose output was clicked. */
   const goToSource = (e: React.MouseEvent) => {
-    const papers = [...e.currentTarget.querySelectorAll<SVGSVGElement>('svg.pw-page')];
-    const page = papers.findIndex((p) => { const r = p.getBoundingClientRect(); return e.clientY >= r.top && e.clientY <= r.bottom && e.clientX >= r.left && e.clientX <= r.right; });
-    if (page < 0) return;
-    const r = papers[page].getBoundingClientRect();
-    const y = ((e.clientY - r.top) / r.height) * Number(papers[page].dataset.height);
-    const id = blockAt(anchors.current, page + 1, y);
+    const g = geometry();
+    if (!g || e.clientX < g.r.left || e.clientX > g.r.right) return;
+    const at = locate(pageHeights(), PAGE_GAP, (e.clientY - g.r.top) / g.scale);
+    const id = at && blockAt(anchors.current, at.page, at.y);
     if (id) jumpToBlock(id);
   };
 
@@ -77,35 +85,34 @@ export function Preview() {
     if (!target || shown.current === target.n) return;
     if (tab !== 'pdf') { setTab('pdf'); return; }
     const box = wrap.current;
-    const papers = box ? [...box.querySelectorAll<SVGSVGElement>('svg.pw-page')] : [];
-    if (!box || !papers.length) return;
+    const g = geometry();
+    if (!box || !g) return;
     shown.current = target.n;
-    const span = anchorSpan(anchors.current, target.id, Number(papers[0].dataset.height));
-    const paper = span && papers[span.page - 1];
-    if (!span || !paper) return;
-    const r = paper.getBoundingClientRect();
+    const heights = pageHeights();
+    const first = anchors.current.find((x) => x.id === target.id);
+    const span = first && anchorSpan(anchors.current, target.id, heights[first.page - 1]);
+    if (!span) return;
     const b = box.getBoundingClientRect();
-    const scale = r.height / Number(paper.dataset.height);
-    const top = r.top - b.top + box.scrollTop + span.y * scale;
+    const top = g.r.top - b.top + box.scrollTop + (pageTops(heights, PAGE_GAP)[span.page - 1] + span.y) * g.scale;
     box.scrollTo({ top: Math.max(0, top - 70), behavior: 'smooth' });
-    setMark({ n: target.n, top, left: r.left - b.left + box.scrollLeft, width: r.width, height: Math.max(16, (span.end - span.y) * scale) });
-  }, [target, tab, svg]); // eslint-disable-line
+    setMark({ n: target.n, top, left: g.r.left - b.left + box.scrollLeft, width: g.r.width, height: Math.max(16, (span.end - span.y) * g.scale) });
+  }, [target, tab, drawn]); // eslint-disable-line
 
   const name = slug(doc.title);
   const downloadPdf = async () => {
-    const r = await compileTypst(exportTypst(doc).source, 'pdf');
+    const r = await compilePdf(exportTypst(doc).source);
     if (r.ok) download(`${name}.pdf`, r.data, 'application/pdf');
     else alert('Typst error:\n' + r.diagnostics.join('\n'));
   };
   const openPdf = async () => {
     if (desktop) {
-      const r = await compileTypst(exportTypst(doc).source, 'pdf');
+      const r = await compilePdf(exportTypst(doc).source);
       if (!r.ok) { alert('Typst error:\n' + r.diagnostics.join('\n')); return; }
       desktop.openPdf(name, r.data as Uint8Array).catch((e) => alert('Could not open the PDF: ' + e));
       return;
     }
     const w = window.open('', '_blank');
-    const r = await compileTypst(exportTypst(doc).source, 'pdf');
+    const r = await compilePdf(exportTypst(doc).source);
     if (!r.ok) { w?.close(); alert('Typst error:\n' + r.diagnostics.join('\n')); return; }
     const url = URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }));
     if (w) w.location.href = url;
@@ -146,11 +153,7 @@ export function Preview() {
             </div>
           )}
           {mark && <div key={mark.n} className="pdf-mark" style={{ top: mark.top, left: mark.left, width: mark.width, height: mark.height }} onAnimationEnd={() => setMark(null)} />}
-          <div className="pages" onClick={goToSource} title="Click to go to that part of the document">
-            {/* what the pages share; never shown itself */}
-            <svg className="pw-defs" aria-hidden="true" dangerouslySetInnerHTML={{ __html: svg.head }} />
-            {svg.pages.map((p, i) => <Page key={i} page={p} />)}
-          </div>
+          <div ref={host} onClick={goToSource} title="Click to go to that part of the document" />
         </div>
       )}
       {tab !== 'pdf' && <pre className="code">{code}</pre>}

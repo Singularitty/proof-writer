@@ -1,37 +1,30 @@
-// The renderer returns every page in one drawing. This takes it apart: what the
-// pages share (styles, glyph outlines) and each page on its own, so the preview
-// can show separate sheets and redraw only the pages an edit changed.
+// The preview is one drawing with every page in it. These place the pages as
+// separate sheets with a gap between them, and find the sheet under a point.
+// All heights are in the drawing's own units (points).
 
-export interface PreviewPage {
-  width: number;
-  height: number;
-  /** The page's drawing, placed at the top of its own sheet. */
-  body: string;
+/** Space between sheets. */
+export const PAGE_GAP = 14;
+
+/** Where each sheet starts. */
+export function pageTops(heights: number[], gap: number): number[] {
+  const tops: number[] = [];
+  let y = 0;
+  for (const h of heights) {
+    tops.push(y);
+    y += h + gap;
+  }
+  return tops;
 }
 
-export interface PreviewDoc {
-  /** Styles and definitions every page refers to. */
-  head: string;
-  pages: PreviewPage[];
+export function totalHeight(heights: number[], gap: number): number {
+  return heights.reduce((a, h) => a + h, 0) + Math.max(0, heights.length - 1) * gap;
 }
 
-const PAGE = /<g class="typst-page" transform="translate\(0, [\d.]+\)"([^>]*?) data-page-width="([\d.]+)" data-page-height="([\d.]+)">/g;
-
-export function splitPages(svg: string): PreviewDoc {
-  const starts = [...svg.matchAll(PAGE)];
-  if (!starts.length) return { head: '', pages: [] };
-  const last = starts[starts.length - 1].index!;
-  // after the last page come the renderer's script and the closing tag
-  const script = svg.indexOf('<script', last);
-  const end = script >= 0 ? script : svg.lastIndexOf('</svg>');
-  const pages = starts.map((m, i): PreviewPage => {
-    const from = m.index! + m[0].length;
-    const to = i + 1 < starts.length ? starts[i + 1].index! : end;
-    return {
-      width: +m[2],
-      height: +m[3],
-      body: `<g class="typst-page" transform="translate(0, 0)"${m[1]} data-page-width="${m[2]}" data-page-height="${m[3]}">` + svg.slice(from, to),
-    };
-  });
-  return { head: svg.slice(svg.indexOf('>') + 1, starts[0].index!), pages };
+/** The page (from 1) at height `y` of the drawing and the height within that page; null between or outside the sheets. */
+export function locate(heights: number[], gap: number, y: number): { page: number; y: number } | null {
+  const tops = pageTops(heights, gap);
+  for (let i = 0; i < heights.length; i++) {
+    if (y >= tops[i] && y <= tops[i] + heights[i]) return { page: i + 1, y: y - tops[i] };
+  }
+  return null;
 }
