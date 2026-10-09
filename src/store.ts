@@ -101,16 +101,31 @@ function initial(): { docId: string; doc: Doc; index: DocMeta[] } {
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+/** The write the timer is waiting to make. */
+let pendingSave: (() => void) | null = null;
 function persist(id: string, doc: Doc, index: DocMeta[]): DocMeta[] {
   const next = index.map((m) => (m.id === id ? { ...m, title: doc.title, updated: Date.now() } : m));
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
+  pendingSave = () => {
+    pendingSave = null;
     save(DOC_KEY(id), doc);
     save(INDEX_KEY, next);
     save('proof-writer:last', id);
-  }, 300);
+  };
+  saveTimer = setTimeout(() => pendingSave?.(), 300);
   return next;
 }
+/** Writes an edit still waiting on the timer, so closing or reloading the page loses nothing. */
+function flushSave() {
+  clearTimeout(saveTimer);
+  pendingSave?.();
+}
+/** Forgets a waiting write (its document is being deleted). */
+function dropSave() {
+  clearTimeout(saveTimer);
+  pendingSave = null;
+}
+if (typeof window !== 'undefined') window.addEventListener('pagehide', flushSave);
 
 export const useStore = create<State>((set, get) => ({
   ...initial(),
@@ -191,13 +206,15 @@ export const useStore = create<State>((set, get) => ({
   deleteDoc: (id) => {
     const { docId, index } = get();
     const nextIndex = index.filter((m) => m.id !== id);
-    try { localStorage.removeItem(DOC_KEY(id)); } catch { /* ignore */ }
     save(INDEX_KEY, nextIndex);
     set({ index: nextIndex });
     if (id === docId) {
+      // opening another document saves the one that was open; this one is going away
+      dropSave();
       if (nextIndex.length) get().openDoc(nextIndex[0].id);
       else get().newDoc(false);
     }
+    try { localStorage.removeItem(DOC_KEY(id)); } catch { /* ignore */ }
   },
   renameDoc: (id, title) => {
     if (id === get().docId) { get().update((d) => { d.title = title; }, 'title'); return; }

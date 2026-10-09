@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Block, BlockType, CaseItem, GrammarProduction, Rule, TheoremKind } from '../model/types';
 import { THEOREM_LABEL } from '../model/types';
 import { findBlockList, updateBlock, useStore } from '../store';
+import { uncoveredRules } from '../check/coverage';
 import { cloneFresh, uid } from '../model/util';
 import { newNode, allRules } from '../model/tree';
 import { MathField, ProseField, TextInput } from './Fields';
@@ -369,8 +370,13 @@ function CasesEditor({ b }: { b: B<'cases'> }) {
   const set = (f: (x: B<'cases'>) => void, key?: string) => updateBlock<'cases'>(b.id, f as never, key);
   const ruleBlocks = doc.blocks.filter((x): x is B<'rules'> => x.type === 'rules');
   const generate = (rb: B<'rules'>) => {
-    const items: CaseItem[] = rb.rules.map((r) => ({ id: uid(), title: `[[${r.name}]]`, body: [{ id: uid(), type: 'text', text: '' }] }));
-    set((x) => { x.cases = [...x.cases.filter((c) => c.title.trim() || c.body.some((bb) => bb.type !== 'text' || bb.text.trim())), ...items]; });
+    const snippets = new Map(useStore.getState().doc.snippets.filter((s) => s.kind === 'text').map((s) => [s.name, s.body]));
+    set((x) => {
+      // only the rules that have no case yet, judged on the cases as they are now
+      const kept = x.cases.filter((c) => c.title.trim() || c.body.some((bb) => bb.type !== 'text' || bb.text.trim()));
+      const missing = uncoveredRules(kept.map((c) => c.title), rb.rules.map((r) => r.name), snippets);
+      x.cases = [...kept, ...missing.map((name): CaseItem => ({ id: uid(), title: `[[${name}]]`, body: [{ id: uid(), type: 'text', text: '' }] }))];
+    });
     setGen(false);
   };
   void allRules;

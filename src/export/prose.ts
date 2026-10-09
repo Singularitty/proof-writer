@@ -18,10 +18,14 @@ export type PBlock =
   | { k: 'ol'; items: Inline[][] }
   | { k: 'dmath'; v: string };
 
-export function expandTextSnippets(src: string, snippets: Map<string, string>, depth = 0): string {
-  if (depth > 8 || !src.includes('{{')) return src;
-  const out = src.replace(/\{\{\s*([\w-]+)\s*\}\}/g, (m, name) => snippets.get(name) ?? m);
-  return out === src ? out : expandTextSnippets(out, snippets, depth + 1);
+/** Expands `{{name}}`. A snippet that reaches itself, directly or through others, is left as written at that point. */
+export function expandTextSnippets(src: string, snippets: Map<string, string>, open: ReadonlySet<string> = new Set()): string {
+  if (!src.includes('{{')) return src;
+  return src.replace(/\{\{\s*([\w-]+)\s*\}\}/g, (m, name: string) => {
+    const body = snippets.get(name);
+    if (body === undefined || open.has(name)) return m;
+    return expandTextSnippets(body, snippets, new Set(open).add(name));
+  });
 }
 
 export function parseProse(src: string): PBlock[] {

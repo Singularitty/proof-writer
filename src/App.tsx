@@ -102,7 +102,7 @@ export default function App() {
 
   const importFile = async (f: File) => loadFile(await f.text(), undefined, f.name);
   return (
-    <div className="app" style={{ gridTemplateColumns: `300px 1fr 6px ${previewWidth}px` }}>
+    <div className="app" style={{ gridTemplateColumns: `minmax(220px, 300px) minmax(420px, 1fr) 6px minmax(260px, ${previewWidth}px)` }}>
       <header className="topbar">
         <span className="logo">⊢ Proof Writer</span>
         <input className="doc-title" value={doc.title} onChange={(e) => update((d) => { d.title = e.target.value; }, 'title')} placeholder="Document title" />

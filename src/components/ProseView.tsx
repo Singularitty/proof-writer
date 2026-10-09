@@ -25,7 +25,8 @@ export function numbering(doc: Doc) {
       counters.set(key, n);
       const name = `${THEOREM_LABEL[b.kind]} ${n}`;
       byId.set(b.id, name);
-      if (b.label) labels.set(sanitizeLabel(b.label), name);
+      // a label used twice keeps pointing at the first statement, as in the checker
+      if (b.label && !labels.has(sanitizeLabel(b.label))) labels.set(sanitizeLabel(b.label), name);
     }
     if (b.type === 'rules') for (const r of b.rules) if (r.name) rules.add(r.name);
   });

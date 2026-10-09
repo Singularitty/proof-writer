@@ -106,7 +106,7 @@ export function Preview() {
         )}
         {tab !== 'pdf' && (
           <>
-            <button onClick={() => navigator.clipboard?.writeText(code)}>Copy</button>
+            <button onClick={() => { navigator.clipboard?.writeText(code).catch(() => alert('The browser did not allow copying. Select the text and copy it by hand.')); }}>Copy</button>
             <button onClick={() => download(`${name}.${tab === 'typst' ? 'typ' : 'tex'}`, code, 'text/plain')}>⤓ .{tab === 'typst' ? 'typ' : 'tex'}</button>
           </>
         )}

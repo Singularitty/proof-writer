@@ -130,7 +130,9 @@ function Docs() {
   const { openDoc, newDoc, deleteDoc, renameDoc, duplicateDoc, setGithubDialog } = useStore.getState();
   const [renaming, setRenaming] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
-  const shown = index.filter((m) => (m.title || 'Untitled').toLowerCase().includes(filter.toLowerCase()));
+  // the filter box is only there for a long list; without the box, nothing is filtered
+  const filtering = index.length > 6;
+  const shown = filtering ? index.filter((m) => (m.title.trim() || 'Untitled').toLowerCase().includes(filter.toLowerCase())) : index;
   return (
     <div className="docs">
       <div className="row">
@@ -140,7 +142,7 @@ function Docs() {
       <div className="row">
         <button onClick={() => setGithubDialog('open')}>Open from GitHub…</button>
       </div>
-      {index.length > 6 && <input className="docs-filter" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter documents" />}
+      {filtering && <input className="docs-filter" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter documents" />}
       <ul>
         {shown.map((m) => (
           <li key={m.id} className={m.id === docId ? 'active' : ''}>
@@ -151,7 +153,7 @@ function Docs() {
                 onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(null); }}
               />
             ) : (
-              <a onClick={() => openDoc(m.id)} onDoubleClick={() => setRenaming(m.id)} title="Open (double-click to rename)">{m.title || 'Untitled'}</a>
+              <a onClick={() => openDoc(m.id)} onDoubleClick={() => setRenaming(m.id)} title="Open (double-click to rename)">{m.title.trim() || 'Untitled'}</a>
             )}
             <span className="dim">
               {m.github && <span className="gh-badge" title={`${m.github.owner}/${m.github.repo}: ${m.github.path} (${m.github.branch})`}>GitHub</span>}
@@ -165,6 +167,7 @@ function Docs() {
           </li>
         ))}
       </ul>
+      {filtering && shown.length === 0 && <p className="dim">No document matches the filter.</p>}
       <p className="help">
         Documents are saved in this browser as you type, and stay until you delete them or clear the site's data.
         To keep a copy elsewhere, use <em>Save .json</em> or <em>GitHub…</em> to commit it to a repository.

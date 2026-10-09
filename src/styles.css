@@ -429,3 +429,21 @@ table.grammar tr:hover td.alts .mini.add, table.grammar tr:focus-within td.alts 
 .rules-grid { justify-content: safe center; overflow-x: auto; }
 .rule-view { grid-template-columns: minmax(min-content, 1fr) auto; }
 .rule-view .pt-prem { flex-wrap: wrap; row-gap: 0.5em; }
+
+/* a wide proof tree scrolls from its left edge instead of being cut off there */
+.tree-canvas { justify-content: safe center; }
+/* a long unbroken word wraps instead of running out of its block */
+.prose { overflow-wrap: anywhere; }
+
+/* document list: a long title is cut short instead of pushing its buttons out of reach */
+.docs li { grid-template-columns: minmax(0, 1fr) auto; }
+.docs li a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-body { scrollbar-gutter: stable; }
+/* a window too narrow for the three columns scrolls sideways instead of hiding the toolbar and editor */
+.app { min-width: 906px; }
+body { overflow-x: auto; }
+/* the title gives way before the toolbar buttons are pushed off the bar */
+.topbar { min-width: 0; }
+.topbar .doc-title { flex: 0 1 380px; min-width: 90px; }
+.topbar .doc-author { flex: 0 1 auto; min-width: 60px; }
+.topbar button, .topbar .logo { flex: none; }
