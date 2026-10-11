@@ -483,3 +483,24 @@ body { overflow-x: auto; }
 .mathfield .math, .mathfield .live { max-width: 100%; }
 /* one formula wider than the form scrolls inside its own field */
 .rule-form .mathfield:not(.editing), .rule-form .mathfield .live { overflow-x: auto; overflow-y: hidden; }
+
+/* desktop: the file a document is in, and the folder panel */
+.file-chip { flex: 0 1 auto; min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--dim); padding: 2px 8px; border: 1px solid var(--line); border-radius: 10px; }
+.file-chip.unsaved { color: var(--warn-ink); border-color: var(--warn); }
+.file-chip.failed { color: var(--danger); border-color: var(--danger-line); }
+.settings label.check { display: flex; align-items: center; gap: 6px; }
+.files { margin-bottom: 10px; }
+.files-head { display: flex; align-items: center; gap: 4px; margin: 2px 0 6px; }
+.files-folder { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files ul { list-style: none; padding: 0; margin: 0; }
+.files li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 6px; padding: 3px 6px; border-radius: 6px; }
+.files li.active { background: var(--accent-soft); }
+.files li a { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files li.dir a { color: var(--ink-2); font-weight: 500; }
+.files li .docs-actions { display: flex; gap: 2px; opacity: 0; }
+.files li:hover .docs-actions, .files li:focus-within .docs-actions { opacity: 1; }
+.files li .docs-actions button { border-color: transparent; background: transparent; }
+.files .unsaved, .doc-file { color: var(--warn-ink); }
+.doc-file { color: var(--dim); }
+.files-error { color: var(--danger); font-size: 12px; margin: 4px 0; }
+.files-open { margin: 14px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--dim); font-weight: 600; }

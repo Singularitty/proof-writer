@@ -1,4 +1,10 @@
 import type { Doc } from '../model/types';
+import { useStore } from '../store';
+
+/** One entry of the open folder. */
+export interface FolderEntry { name: string; path: string; kind: 'dir' | 'file'; modified: number }
+/** A listing of the open folder or of a folder inside it. */
+export interface FolderListing { root: string; dir: string; parent: string | null; entries: FolderEntry[] }
 
 /** Bridge exposed by electron/preload.cjs; undefined in the browser build. */
 export interface DesktopBridge {
@@ -9,9 +15,25 @@ export interface DesktopBridge {
   saveFile(suggestedName: string, data: string | Uint8Array, filters: { name: string; extensions: string[] }[]): Promise<string | null>;
   openPdf(name: string, data: Uint8Array): Promise<string>;
   onMenu(cb: (channel: 'open' | 'save' | 'save-as') => void): () => void;
-  /** Watch this window's document file for changes made outside the app; null stops. */
-  watchDocument(path: string | null): Promise<void>;
+  /** Watch this window's document file for changes made outside the app; null stops. Resolves to what the file holds now, or null if it is not there. */
+  watchDocument(path: string | null): Promise<string | null>;
   onDocumentChanged(cb: (f: { path: string; text: string }) => void): () => void;
+  /** The folder this window works in. Everything but `pick` and `open` is confined to it. */
+  workspace: {
+    /** Asks for a folder. */
+    pick(): Promise<FolderListing | null>;
+    /** Reopens a folder by path; null if it is no longer there. */
+    open(dir: string): Promise<FolderListing | null>;
+    list(dir: string): Promise<FolderListing>;
+    read(path: string): Promise<string>;
+    /** Creates a document, never overwriting one. Returns its path. */
+    create(dir: string, name: string, text: string): Promise<string>;
+    /** Renames a document within its folder. Returns its new path. */
+    rename(path: string, name: string): Promise<string>;
+    /** Moves a document to the system's trash. */
+    trash(path: string): Promise<void>;
+    reveal(path: string): Promise<void>;
+  };
 }
 
 declare global {
@@ -20,15 +42,20 @@ declare global {
 
 export const desktop: DesktopBridge | undefined = typeof window !== 'undefined' ? window.desktop : undefined;
 
-/** File each open document was last saved to or opened from (desktop only), keyed by doc id. */
-const filePaths = new Map<string, string>();
-export const docFilePath = (docId: string) => filePaths.get(docId) ?? null;
-export const setDocFilePath = (docId: string, p: string) => { filePaths.set(docId, p); };
+/** The file a document was last saved to or opened from (desktop only). It is kept with the document's library entry, so it survives a restart. */
+export const docFilePath = (docId: string) => useStore.getState().index.find((m) => m.id === docId)?.file ?? null;
+export const setDocFilePath = (docId: string, p: string) => { useStore.getState().setDocFile(docId, p); };
+
+/** The last part of a path, on either kind of system. */
+export const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
 /** What each document's file held when it was last opened, saved or reloaded, and the document as it was then. */
 const saved = new Map<string, { doc: Doc; text: string }>();
 export const savedState = (docId: string) => saved.get(docId) ?? null;
-export const markSaved = (docId: string, doc: Doc, text: string) => { saved.set(docId, { doc, text }); };
+export const markSaved = (docId: string, doc: Doc, text: string) => {
+  saved.set(docId, { doc, text });
+  useStore.getState().markFileSaved(docId);
+};
 /** The file changed and the user kept their own version: remember the file's text so the same change is not raised again. */
 export const markDiskSeen = (docId: string, text: string) => {
   const s = saved.get(docId);

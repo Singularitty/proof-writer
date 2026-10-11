@@ -192,3 +192,31 @@ Not checked: induction on the structure of a term or type (cases drawn from a
 grammar), whether the premises of a proof tree step fit together, and whether
 the prose of a proof is correct.
 
+## Files in the desktop app
+
+The **Files** tab shows a folder. **Open folder…** chooses it, and the app
+reopens it next time. Folders inside it can be entered; `‹ ..` goes back up.
+Only documents (`.json`) and Typst files (`.typ`) are listed.
+
+* Click a document to open it. Opening one that is already open switches to it
+  rather than making a second copy.
+* **＋ New** creates `Untitled.proof.json` in the folder and lets you name it.
+* The buttons beside a file rename it, show it in the system's file manager, or
+  move it to the trash. Nothing is ever deleted outright.
+* A Typst file is imported as a new document, which is not in a file until you
+  save it.
+
+A document opened from a file, or saved to one, stays tied to it, also after
+the app is restarted. The top bar shows the file's name, with a `●` while there
+are edits not yet written to it. With **Save automatically** on in Settings,
+which it is at first, the file is written a moment after each edit; Ctrl+S
+writes it at once, and Ctrl+Shift+S saves to a different file.
+
+If another program changes the file, the document is reloaded. If you have
+edits that are not saved, the app asks whether to reload or keep yours. When a
+document is opened, it is checked against its file in the same way.
+
+Below the folder, **Open documents** lists everything the app has open, with
+the file each is in. One marked *not in a file* exists only inside the app
+until you save it. Closing a document that is in a file leaves the file alone.
+

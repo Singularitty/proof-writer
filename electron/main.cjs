@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { watchFile } = require('./watch.cjs');
+const workspace = require('./workspace.cjs');
 
 const DIST = path.join(__dirname, '..', 'dist');
 
@@ -88,19 +89,21 @@ ipcMain.handle('save-document', async (e, { path: p, text, suggestedName }) => {
 // outside the app (another program, a git pull) reaches the editor.
 const watchers = new Map();
 
-ipcMain.handle('watch-document', (e, p) => {
+// Answers with what the file holds now, so the window can tell whether its copy is behind.
+ipcMain.handle('watch-document', async (e, p) => {
   const sender = e.sender;
   const id = sender.id;
   const current = watchers.get(id);
-  if (current?.path === p) return;
+  if (current?.path === p) { try { return p ? await fs.readFile(p, 'utf8') : null; } catch { return null; } }
   if (current) current.stop();
   else sender.once('destroyed', () => { watchers.get(id)?.stop(); watchers.delete(id); });
   watchers.delete(id);
-  if (!p) return;
+  if (!p) return null;
   try {
     const stop = watchFile(p, (text) => { if (!sender.isDestroyed()) sender.send('document-changed', { path: p, text }); });
     watchers.set(id, { path: p, stop });
-  } catch { /* the folder is gone; nothing to watch */ }
+    return stop.initial;
+  } catch { return null; /* the folder is gone; nothing to watch */ }
 });
 
 ipcMain.handle('save-file', async (e, { suggestedName, data, filters }) => {
@@ -110,6 +113,37 @@ ipcMain.handle('save-file', async (e, { suggestedName, data, filters }) => {
   await fs.writeFile(r.filePath, typeof data === 'string' ? data : Buffer.from(data));
   return r.filePath;
 });
+
+// ---------- the folder a window works in ----------
+// A window may list, read, create, rename and trash documents only inside the
+// folder its user opened.
+const roots = new Map();
+const rootOf = (e) => roots.get(e.sender.id) ?? null;
+function openFolder(e, dir) {
+  const id = e.sender.id;
+  if (!roots.has(id)) e.sender.once('destroyed', () => roots.delete(id));
+  roots.set(id, dir);
+  return workspace.listFolder(dir);
+}
+
+ipcMain.handle('workspace-pick', async (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const r = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'], title: 'Open a folder of documents' });
+  if (r.canceled || !r.filePaths[0]) return null;
+  return openFolder(e, r.filePaths[0]);
+});
+// Reopens the folder from last time. It has to still be a folder.
+ipcMain.handle('workspace-open', async (e, dir) => {
+  try { if (!(await fs.stat(dir)).isDirectory()) return null; } catch { return null; }
+  return openFolder(e, path.resolve(dir));
+});
+ipcMain.handle('workspace-list', (e, dir) => workspace.listFolder(rootOf(e), dir));
+ipcMain.handle('workspace-read', async (e, p) => fs.readFile(workspace.mustBeInside(rootOf(e), p), 'utf8'));
+ipcMain.handle('workspace-create', (e, { dir, name, text }) => workspace.createFile(rootOf(e), dir, name, text));
+ipcMain.handle('workspace-rename', (e, { path: p, name }) => workspace.renameFile(rootOf(e), p, name));
+// To the system's trash, where it can be recovered; never deleted outright.
+ipcMain.handle('workspace-trash', (e, p) => shell.trashItem(workspace.mustBeInside(rootOf(e), p)));
+ipcMain.handle('workspace-reveal', (e, p) => { shell.showItemInFolder(workspace.mustBeInside(rootOf(e), p)); });
 
 // "Open PDF": write to a temp file and hand it to the system viewer.
 ipcMain.handle('open-pdf', async (_e, { name, data }) => {

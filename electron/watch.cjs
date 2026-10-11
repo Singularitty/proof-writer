@@ -24,6 +24,8 @@ function watchFile(file, onChange) {
   });
   const stop = () => { clearTimeout(timer); watcher.close(); };
   stop.known = (text) => { last = text; };
+  /** What the file held when watching began; null if it was not there. */
+  stop.initial = last;
   return stop;
 }
 

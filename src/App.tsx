@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { useStore } from './store';
+import { hasUnsavedEdits, useStore } from './store';
 import { BlockList } from './components/Blocks';
 import { Sidebar } from './components/Sidebar';
 import { SectionPager, SectionTabs, useCurrentSection } from './components/Sections';
 import { Preview } from './preview/Preview';
 import { Icon } from './components/Icon';
 import { download, slug } from './util/download';
-import { desktop, docFilePath, markDiskSeen, markSaved, savedState, setDocFilePath } from './util/desktop';
+import { desktop, docFilePath, fileName, markDiskSeen, markSaved, savedState, setDocFilePath } from './util/desktop';
+import { refreshFiles } from './components/Files';
 import { externalChange } from './util/external';
 import { loadFile } from './util/files';
 import { canSaveToFile, pickFileToOpen, saveToFile, useJustSaved, useSaveFileName } from './util/browserFiles';
@@ -78,22 +79,51 @@ export default function App() {
     // In the desktop app, the File menu and "Open with" route here.
     const offMenu = desktop?.onMenu((c) => (c === 'open' ? openDoc() : saveDoc(c === 'save-as')));
     desktop?.pendingOpen().then((f) => f && loadFile(f.text, f.path));
-    const offChanged = desktop?.onDocumentChanged(({ path, text }) => {
-      const { docId, doc } = useStore.getState();
-      if (docFilePath(docId) !== path) return;
+    /** Brings the open document and its file into step, given what the file holds now. */
+    const meetDisk = (docId: string, text: string) => {
+      const { docId: open, doc, index } = useStore.getState();
+      if (open !== docId) return;
+      if (JSON.stringify(doc, null, 2) === text) { markSaved(docId, doc, text); return; }
       const s = savedState(docId);
-      const action = externalChange({ disk: text, saved: s?.text ?? null, dirty: !s || s.doc !== doc });
+      // after a restart nothing is remembered of the saved text, only whether there were edits since
+      const action = externalChange({ disk: text, saved: s?.text ?? null, dirty: s ? s.doc !== doc : hasUnsavedEdits(index.find((m) => m.id === docId)) });
       if (action === 'reload') reloadFromDisk(docId, text);
       else if (action === 'ask') setDiskChange({ docId, text });
+    };
+    /** Starts watching the open document's file, and catches up with it if this copy is behind. */
+    const follow = () => {
+      const docId = useStore.getState().docId;
+      void desktop?.watchDocument(docFilePath(docId)).then((text) => { if (text !== null) meetDisk(docId, text); }, () => {});
+    };
+    const offChanged = desktop?.onDocumentChanged(({ path, text }) => {
+      const docId = useStore.getState().docId;
+      if (docFilePath(docId) === path) meetDisk(docId, text);
     });
-    // Each document has its own file; follow whichever one is open.
+    // Each document has its own file; follow whichever one is open, starting with the one from last time.
+    follow();
     const offDoc = useStore.subscribe((s, prev) => {
       if (s.docId === prev.docId) return;
       setDiskChange(null);
-      void desktop?.watchDocument(docFilePath(s.docId));
+      follow();
     });
     return () => { window.removeEventListener('keydown', onKey); offMenu?.(); offChanged?.(); offDoc(); };
   }, []);
+
+  // Desktop: which file the document is in, whether it has edits not yet saved there, and saving by itself.
+  const meta = useStore((s) => s.index.find((m) => m.id === s.docId));
+  const unsaved = hasUnsavedEdits(meta);
+  const [autosave, setAutosave] = useState(() => { try { return localStorage.getItem('proof-writer:autosave') !== '0'; } catch { return true; } });
+  const [saveError, setSaveError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!desktop) return;
+    document.title = `${meta?.file ? fileName(meta.file) : doc.title || 'Untitled'}${unsaved ? ' •' : ''} — Proof Writer`;
+  }, [meta?.file, doc.title, unsaved]);
+  useEffect(() => {
+    // not while the file has changed underneath us and the user has yet to choose
+    if (!desktop || !autosave || !meta?.file || !unsaved || diskChange) return;
+    const t = setTimeout(() => { void saveDoc(false, true).then((err) => setSaveError(err)); }, 1200);
+    return () => clearTimeout(t);
+  }, [doc, autosave, meta?.file, unsaved, diskChange]); // eslint-disable-line
 
   const startDrag = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -116,6 +146,11 @@ export default function App() {
         <span className="logo">⊢ Proof Writer</span>
         <input className="doc-title" value={doc.title} onChange={(e) => update((d) => { d.title = e.target.value; }, 'title')} placeholder="Document title" />
         <input className="doc-author" value={doc.author} onChange={(e) => update((d) => { d.author = e.target.value; }, 'author')} placeholder="Author" />
+        {desktop && (
+          <span className={'file-chip' + (unsaved ? ' unsaved' : '') + (saveError ? ' failed' : '')} title={saveError ? `Could not save: ${saveError}` : meta?.file ? `${meta.file}${unsaved ? ' (edits not yet saved)' : ' (saved)'}` : 'This document is not in a file yet. Save puts it in one.'}>
+            {meta?.file ? `${unsaved ? '● ' : ''}${fileName(meta.file)}` : 'not in a file'}
+          </span>
+        )}
         <span className="grow" />
         <button className="theme-toggle" onClick={cycleTheme} title={`Theme: ${theme} (click to change)`} aria-label={`Theme: ${theme}`}><Icon name={THEME_ICON[theme]} /></button>
         <button onClick={() => useStore.getState().undo()} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)"><Icon name="undo" /></button>
@@ -143,6 +178,12 @@ export default function App() {
                   {[10, 11, 12].map((s) => <option key={s} value={s}>{s}pt</option>)}
                 </select>
               </label>
+              {desktop && (
+                <label className="check" title="Write the document to its file a moment after each edit. Ctrl+S still saves at once.">
+                  <input type="checkbox" checked={autosave} onChange={(e) => { setAutosave(e.target.checked); try { localStorage.setItem('proof-writer:autosave', e.target.checked ? '1' : '0'); } catch { /* ignore */ } }} />
+                  Save automatically
+                </label>
+              )}
               <label>Theorem numbering
                 <select value={doc.settings.numberTheorems} onChange={(e) => update((d) => { d.settings.numberTheorems = e.target.value as 'shared' | 'per-kind'; })}>
                   <option value="shared">Shared (Lemma 1, Theorem 2)</option>
@@ -205,24 +246,33 @@ function reloadFromDisk(docId: string, text: string) {
   } catch { /* half-written or not a document: wait for the next change */ }
 }
 
-/** Writes to the document's file, asking once where it is. A browser that cannot write to files downloads it instead. */
-async function saveDoc(saveAs: boolean) {
+/**
+ * Writes to the document's file, asking once where it is. A browser that cannot write to files downloads it instead.
+ * `quiet` is for saving unasked: it never opens a dialog, and reports a failure by returning its message.
+ */
+async function saveDoc(saveAs: boolean, quiet = false): Promise<string | null> {
   const { doc, docId } = useStore.getState();
   const name = `${slug(doc.title)}.proof.json`;
   const text = JSON.stringify(doc, null, 2);
   if (!desktop) {
-    if (!canSaveToFile()) { download(name, text, 'application/json'); return; }
+    if (!canSaveToFile()) { download(name, text, 'application/json'); return null; }
     try { await saveToFile(docId, text, name, saveAs); } catch (e) { alert('Could not save: ' + e); }
-    return;
+    return null;
   }
+  const known = saveAs ? null : docFilePath(docId);
+  if (quiet && !known) return null;
   try {
-    const p = await desktop.saveDocument(saveAs ? null : docFilePath(docId), text, name);
+    const p = await desktop.saveDocument(known, text, name);
     if (p) {
-      setDocFilePath(docId, p);
+      if (p !== known) setDocFilePath(docId, p);
       markSaved(docId, doc, text);
       void desktop.watchDocument(p);
+      if (p !== known) refreshFiles();
     }
+    return null;
   } catch (e) {
-    alert('Could not save: ' + e);
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!quiet) alert('Could not save: ' + msg);
+    return msg;
   }
 }

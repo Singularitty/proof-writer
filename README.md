@@ -47,8 +47,12 @@ snippets, the GitHub integration, Typst import and the full list of checks.
 ## Desktop app
 
 The same app runs as a desktop app for Linux, macOS and Windows, where
-documents are ordinary files: Open and Save use native dialogs, and a document
-that changes on disk is reloaded.
+documents are files. Open a folder in the **Files** tab to see its documents,
+open one with a click, and create, rename or trash them there. A document
+opened from a file is saved back to it as you type, the top bar shows which
+file that is and whether it has edits not yet written, and a change made to the
+file by another program is picked up. [The guide](docs/guide.md#files-in-the-desktop-app)
+has the details.
 
 ```sh
 npm install
@@ -94,7 +98,8 @@ Source layout:
   in place: the compiler sends only what an edit changed, and the drawing is
   patched instead of redrawn
 * `electron` — desktop shell: window, menu, native file dialogs (`main.cjs`),
-  and the `window.desktop` bridge (`preload.cjs`)
+  the folder a window works in (`workspace.cjs`), watching a file for outside
+  changes (`watch.cjs`), and the `window.desktop` bridge (`preload.cjs`)
 * `public/fonts` — New Computer Modern (text and math) and DejaVu Sans Mono, from
   [typst-assets](https://github.com/typst/typst-assets)
 

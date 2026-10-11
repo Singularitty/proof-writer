@@ -15,7 +15,14 @@ export interface DocMeta {
   updated: number;
   /** The GitHub file this document was opened from or last committed to. */
   github?: GitHubSource;
+  /** Desktop: the file on disk this document is opened from and saved to. */
+  file?: string;
+  /** When the document was last read from or written to that file. */
+  fileSaved?: number;
 }
+
+/** True when a document that has a file was edited since it was last read from or written to it. */
+export const hasUnsavedEdits = (m: DocMeta | undefined) => !!m?.file && m.updated > (m.fileSaved ?? 0);
 
 function load<T>(key: string): T | null {
   try {
@@ -85,6 +92,10 @@ interface State {
   renameDoc: (id: string, title: string) => void;
   duplicateDoc: (id: string) => void;
   setGithubSource: (id: string, src: GitHubSource | undefined) => void;
+  /** Ties a document to a file on disk (or unties it), marking it as just saved there. */
+  setDocFile: (id: string, file: string | undefined) => void;
+  /** Records that a document's file now holds what the document holds. */
+  markFileSaved: (id: string) => void;
 }
 
 function initial(): { docId: string; doc: Doc; index: DocMeta[] } {
@@ -112,7 +123,8 @@ function persist(id: string, doc: Doc, index: DocMeta[]): DocMeta[] {
   pendingSave = () => {
     pendingSave = null;
     save(DOC_KEY(id), doc);
-    save(INDEX_KEY, next);
+    // the index as it is now: it may have been updated since (a file saved, say)
+    save(INDEX_KEY, useStore.getState().index);
     save('proof-writer:last', id);
   };
   saveTimer = setTimeout(() => pendingSave?.(), 300);
@@ -236,6 +248,17 @@ export const useStore = create<State>((set, get) => ({
     const src = id === docId ? doc : load<Doc>(DOC_KEY(id));
     if (!src) return;
     get().importDoc({ ...structuredClone(src), title: `${src.title} (copy)` });
+  },
+  setDocFile: (id, file) => {
+    const nextIndex = get().index.map((m) => (m.id === id ? { ...m, file, fileSaved: file ? Date.now() + 1 : undefined } : m));
+    save(INDEX_KEY, nextIndex);
+    set({ index: nextIndex });
+  },
+  markFileSaved: (id) => {
+    // after any edit's own timestamp, including one written in this same millisecond
+    const nextIndex = get().index.map((m) => (m.id === id ? { ...m, fileSaved: Math.max(Date.now(), m.updated) + 1 } : m));
+    save(INDEX_KEY, nextIndex);
+    set({ index: nextIndex });
   },
   setGithubSource: (id, src) => {
     const nextIndex = get().index.map((m) => (m.id === id ? { ...m, github: src } : m));

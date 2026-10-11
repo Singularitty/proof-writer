@@ -13,6 +13,16 @@ contextBridge.exposeInMainWorld('desktop', {
     ipcRenderer.on('document-changed', h);
     return () => ipcRenderer.removeListener('document-changed', h);
   },
+  workspace: {
+    pick: () => ipcRenderer.invoke('workspace-pick'),
+    open: (dir) => ipcRenderer.invoke('workspace-open', dir),
+    list: (dir) => ipcRenderer.invoke('workspace-list', dir),
+    read: (path) => ipcRenderer.invoke('workspace-read', path),
+    create: (dir, name, text) => ipcRenderer.invoke('workspace-create', { dir, name, text }),
+    rename: (path, name) => ipcRenderer.invoke('workspace-rename', { path, name }),
+    trash: (path) => ipcRenderer.invoke('workspace-trash', path),
+    reveal: (path) => ipcRenderer.invoke('workspace-reveal', path),
+  },
   onMenu: (cb) => {
     const h = (_e, channel) => cb(channel);
     ipcRenderer.on('menu', h);

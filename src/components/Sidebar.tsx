@@ -7,6 +7,9 @@ import { useNumbering } from './ProseView';
 import { THEOREM_LABEL } from '../model/types';
 import { Tracker, jumpToBlock, useTracker } from './Tracker';
 import { snippetUses } from '../model/snippets';
+import { hasUnsavedEdits } from '../store';
+import { desktop, fileName } from '../util/desktop';
+import { Files } from './Files';
 
 export function Sidebar() {
   const [tab, setTab] = useState<'outline' | 'snippets' | 'docs' | 'tracker'>('snippets');
@@ -17,7 +20,7 @@ export function Sidebar() {
       <div className="tabs">
         <button className={tab === 'snippets' ? 'active' : ''} onClick={() => setTab('snippets')}>Snippets</button>
         <button className={tab === 'outline' ? 'active' : ''} onClick={() => setTab('outline')}>Outline</button>
-        <button className={tab === 'docs' ? 'active' : ''} onClick={() => setTab('docs')}>Documents</button>
+        <button className={tab === 'docs' ? 'active' : ''} onClick={() => setTab('docs')}>{desktop ? 'Files' : 'Documents'}</button>
         <button className={tab === 'tracker' ? 'active' : ''} onClick={() => setTab('tracker')} title="Missing cases, broken references and unfinished proofs">
           Tracker{problems > 0 && <span className={'tab-count' + (tracker.errors ? ' error' : '')}>{problems}</span>}
         </button>
@@ -25,6 +28,8 @@ export function Sidebar() {
       <div className="sidebar-body">
         {tab === 'outline' && <Outline />}
         {tab === 'snippets' && <Snippets />}
+        {tab === 'docs' && desktop && <Files />}
+        {tab === 'docs' && desktop && <h4 className="files-open">Open documents</h4>}
         {tab === 'docs' && <Docs />}
         {tab === 'tracker' && <Tracker view={tracker} />}
       </div>
@@ -163,22 +168,31 @@ function Docs() {
               <a onClick={() => openDoc(m.id)} onDoubleClick={() => setRenaming(m.id)} title="Open (double-click to rename)">{m.title.trim() || 'Untitled'}</a>
             )}
             <span className="dim">
+              {m.file && <span className="doc-file" title={m.file}>{fileName(m.file)}{hasUnsavedEdits(m) ? ' ●' : ''} · </span>}
+              {desktop && !m.file && <span className="doc-file" title="Use Save to put it in a file">not in a file · </span>}
               {m.github && <span className="gh-badge" title={`${m.github.owner}/${m.github.repo}: ${m.github.path} (${m.github.branch})`}>GitHub</span>}
               {new Date(m.updated).toLocaleString()}
             </span>
             <span className="docs-actions">
               <button className="mini" onClick={() => setRenaming(m.id)} title="Rename" aria-label="Rename">✎</button>
               <button className="mini" onClick={() => duplicateDoc(m.id)} title="Duplicate" aria-label="Duplicate">⧉</button>
-              <button className="mini danger" onClick={() => { if (confirm(`Delete "${m.title}" from this browser? This cannot be undone.`)) deleteDoc(m.id); }} title="Delete" aria-label="Delete">×</button>
+              <button className="mini danger" onClick={() => { if (confirm(m.file ? `Close "${m.title}"? Its file ${fileName(m.file)} stays on disk${hasUnsavedEdits(m) ? ', but edits not yet saved to it will be lost' : ''}.` : `Delete "${m.title}" from this ${desktop ? 'app' : 'browser'}? It is not saved in a file, so this cannot be undone.`)) deleteDoc(m.id); }} title={m.file ? 'Close (the file stays on disk)' : 'Delete'} aria-label={m.file ? 'Close' : 'Delete'}>×</button>
             </span>
           </li>
         ))}
       </ul>
       {filtering && shown.length === 0 && <p className="dim">No document matches the filter.</p>}
-      <p className="help">
-        Documents are saved in this browser as you type, and stay until you delete them or clear the site's data.
-        To keep a copy elsewhere, use <em>Save .json</em> or <em>GitHub…</em> to commit it to a repository.
-      </p>
+      {desktop ? (
+        <p className="help">
+          A document opened from a file is saved back to it as you type. One marked <em>not in a file</em> is kept only
+          inside this app until you <em>Save</em> it somewhere.
+        </p>
+      ) : (
+        <p className="help">
+          Documents are saved in this browser as you type, and stay until you delete them or clear the site's data.
+          To keep a copy elsewhere, use <em>Save .json</em> or <em>GitHub…</em> to commit it to a repository.
+        </p>
+      )}
     </div>
   );
 }

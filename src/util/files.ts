@@ -1,6 +1,7 @@
 import { useStore, type DocMeta } from '../store';
 import { importTypst } from '../import/typst';
 import { desktop, markSaved, setDocFilePath } from './desktop';
+import { hasUnsavedEdits } from '../store';
 import type { Doc } from '../model/types';
 
 /**
@@ -21,6 +22,18 @@ export function loadFile(text: string, path?: string, name = path ?? '', meta?: 
     const d = JSON.parse(text) as Doc;
     if (!Array.isArray(d.blocks) || !Array.isArray(d.snippets)) throw new Error('not a proof-writer document');
     d.settings ??= { paper: 'a4', fontSize: 11, numberTheorems: 'shared' };
+    // A file that is already in the library is shown, not opened a second time. Its
+    // contents are taken from disk unless that would discard edits not yet saved there.
+    const already = path ? useStore.getState().index.find((m) => m.file === path) : undefined;
+    if (already && path) {
+      const st = useStore.getState();
+      if (st.docId !== already.id) st.openDoc(already.id);
+      const open = useStore.getState();
+      if (!hasUnsavedEdits(already) && JSON.stringify(open.doc, null, 2) !== text) open.replaceDoc(d);
+      if (!hasUnsavedEdits(already)) markSaved(already.id, useStore.getState().doc, text);
+      void desktop?.watchDocument(path);
+      return true;
+    }
     useStore.getState().importDoc(d, meta);
     if (path) {
       const { docId, doc } = useStore.getState();
