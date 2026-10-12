@@ -58,12 +58,20 @@ export function markers(text: string): Marker[] {
   return out;
 }
 
-/** The file with comments and string contents blanked, line breaks kept. */
+/** A `'` that starts a char literal: `'x'`, `'"'`, `'\n'`, `'\''`, `'\x41'`, `'\u{1F600}'`. */
+const CHAR = /'(?:\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]+\}|.)|[^\\\n'])'/uy;
+/** An `r` that opens a raw string: `r"` or `r#"` with any number of `#`. */
+const RAW = /r(#*)"/y;
+/** Characters that make a following `'` or `r` part of an identifier. */
+const IDENT = /[\w']/;
+
+/** The file with comments and string and char literal contents blanked, line breaks kept. */
 function codeOnly(text: string): string {
   let out = '';
   let depth = 0;
   let i = 0;
   const blank = (c: string) => (c === '\n' ? '\n' : ' ');
+  const fresh = (at: number) => at === 0 || !IDENT.test(text[at - 1]);
   while (i < text.length) {
     if (text.startsWith('/-', i)) { depth++; out += '  '; i += 2; continue; }
     if (depth > 0) {
@@ -73,6 +81,17 @@ function codeOnly(text: string): string {
     if (text.startsWith('--', i)) {
       while (i < text.length && text[i] !== '\n') { out += ' '; i++; }
       continue;
+    }
+    if (text[i] === 'r' && fresh(i)) {
+      RAW.lastIndex = i;
+      const m = RAW.exec(text);
+      if (m) {
+        const close = '"' + m[1];
+        const end = text.indexOf(close, i + m[0].length);
+        const stop = end < 0 ? text.length : end + close.length;
+        while (i < stop) out += blank(text[i++]);
+        continue;
+      }
     }
     if (text[i] === '"') {
       out += ' ';
@@ -85,6 +104,11 @@ function codeOnly(text: string): string {
       i++;
       continue;
     }
+    if (text[i] === "'" && fresh(i)) {
+      CHAR.lastIndex = i;
+      const m = CHAR.exec(text);
+      if (m) { out += ' '.repeat(m[0].length); i += m[0].length; continue; }
+    }
     out += text[i++];
   }
   return out;
@@ -92,16 +116,25 @@ function codeOnly(text: string): string {
 
 export interface Scan { sorries: number[]; axioms: { line: number; name: string }[] }
 
-const SORRY = /(?<![\w.])(sorry|admit)(?![\w])/;
-const AXIOM = /^\s*(?:(?:private|protected|noncomputable|unsafe)\s+)*axiom\s+([^\s:({\[]+)/;
+const SORRY = /(?<![\w.])(sorryAx|sorry|admit)(?![\w])/;
+const AXIOM = /(?<![\w.])axiom(?![\w'])/g;
+/** The name on the same line as `axiom`, then the name on the next non-blank line. */
+const NAME = /^[ \t]*([^\s:({\[]+)/;
+const NEXT = /^\s*([^\s:({\[]+)/;
 
-/** Lines (1-based) holding `sorry` or `admit`, and the axioms declared, outside comments and strings. */
+/** Lines (1-based) holding `sorry`, `admit` or `sorryAx`, and the axioms declared, outside comments and literals. */
 export function scan(text: string): Scan {
+  const code = codeOnly(text);
   const out: Scan = { sorries: [], axioms: [] };
-  codeOnly(text).split(/\r?\n/).forEach((line, i) => {
+  code.split(/\r?\n/).forEach((line, i) => {
     if (SORRY.test(line)) out.sorries.push(i + 1);
-    const m = AXIOM.exec(line);
-    if (m) out.axioms.push({ line: i + 1, name: m[1] });
   });
+  for (const m of code.matchAll(AXIOM)) {
+    const at = m.index!;
+    const line = code.slice(0, at).split('\n').length;
+    const rest = code.slice(at + 'axiom'.length);
+    const named = NAME.exec(rest) ?? NEXT.exec(rest);
+    out.axioms.push({ line, name: named ? named[1] : '(unnamed)' });
+  }
   return out;
 }

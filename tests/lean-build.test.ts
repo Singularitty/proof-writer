@@ -63,3 +63,38 @@ describe('scanning for sorry and axiom', () => {
     expect(scan(text)).toEqual({ sorries: [7], axioms: [] });
   });
 });
+
+describe('scanning: literals, raw strings, axioms and sorryAx', () => {
+  it('keeps a char literal holding a quote from hiding what follows', () => {
+    expect(scan(['def q : Char := \'"\'', 'theorem a : P := by sorry', 'axiom cheat : False'].join('\n'))).toEqual({
+      sorries: [2],
+      axioms: [{ line: 3, name: 'cheat' }],
+    });
+  });
+  it('reads escaped char literals as literals', () => {
+    const text = ["def c := ['\\n', '\\'', '\\\\', '\\x41', '\\u{1F600}']", 'theorem a : P := by sorry'].join('\n');
+    expect(scan(text)).toEqual({ sorries: [2], axioms: [] });
+  });
+  it('does not take a prime in an identifier for a char literal', () => {
+    expect(scan("theorem t (h' : P) : Q := by sorry")).toEqual({ sorries: [1], axioms: [] });
+  });
+  it('ends a raw string at a quote, where a backslash is not an escape', () => {
+    expect(scan(['def p := r"\\"', 'theorem t : True := by sorry'].join('\n'))).toEqual({ sorries: [2], axioms: [] });
+  });
+  it('ignores sorry inside a raw string with hashes', () => {
+    expect(scan('def s := r#"a "sorry" b"#')).toEqual({ sorries: [], axioms: [] });
+  });
+  it('flags axioms behind attributes, options and line breaks', () => {
+    expect(scan('@[simp] axiom foo : P')).toEqual({ sorries: [], axioms: [{ line: 1, name: 'foo' }] });
+    expect(scan('set_option maxHeartbeats 400000 in axiom bar : P')).toEqual({ sorries: [], axioms: [{ line: 1, name: 'bar' }] });
+    expect(scan(['axiom', '  baz : P'].join('\n'))).toEqual({ sorries: [], axioms: [{ line: 1, name: 'baz' }] });
+    expect(scan('axiom')).toEqual({ sorries: [], axioms: [{ line: 1, name: '(unnamed)' }] });
+  });
+  it('does not flag axiom as part of a longer name, a comment or a string', () => {
+    const text = ['theorem no_axioms_here : True := trivial', 'def my_axiom := 1', '-- axiom in comment', 'def s := "axiom x"'].join('\n');
+    expect(scan(text)).toEqual({ sorries: [], axioms: [] });
+  });
+  it('flags sorryAx', () => {
+    expect(scan('theorem u : P := sorryAx P false')).toEqual({ sorries: [1], axioms: [] });
+  });
+});
