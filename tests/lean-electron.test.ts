@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { EFFORTS, MODELS } from '../src/lean/prompt';
@@ -16,6 +17,12 @@ process.stdin.on('data', (c) => { input += c; });
 process.stdin.on('end', async () => {
   fs.writeFileSync('prompt.txt', input);
   const mode = process.env.FAKE_CLAUDE || 'ok';
+  if (mode === 'orphan') {
+    const grandchild = require('child_process').spawn('sleep', ['30'], { stdio: 'inherit' });
+    fs.writeFileSync('grandchild.pid', String(grandchild.pid));
+    setInterval(() => {}, 1000);
+    return;
+  }
   if (mode === 'hang') { setInterval(() => {}, 1000); return; }
   const say = (o) => process.stdout.write(JSON.stringify(o) + '\\n');
   say({ type: 'system', subtype: 'init' });
@@ -35,9 +42,13 @@ process.stdin.on('end', async () => {
 `;
 const FAKE_LAKE = `#!/usr/bin/env node
 if (process.argv[2] === '--version') { console.log('Lake version 5.0.0-src (Lean version 4.22.0)'); process.exit(0); }
-console.log("error: ././././PW/Defs.lean:2:0: unknown identifier 'x'");
-console.error('error: build failed');
-process.exitCode = 1;
+if (process.env.FAKE_LAKE === 'hang') {
+  setInterval(() => {}, 1000);
+} else {
+  console.log("error: ././././PW/Defs.lean:2:0: unknown identifier 'x'");
+  console.error('error: build failed');
+  process.exitCode = 1;
+}
 `;
 
 function setup() {
@@ -186,6 +197,70 @@ describe.skipIf(process.platform === 'win32')('the Lean side of the desktop app'
     expect(built.output).toContain('build failed');
     expect(built.files).toEqual([{ path: 'PW/Defs.lean', text: '-- pw: b1\n' }, { path: 'PW/LemA.lean', text: 'import PW.Defs\n' }]);
     expect(readFileSync(join(dir, 'PW.lean'), 'utf8')).toBe('import PW.Defs\nimport PW.LemA\n');
+  });
+
+  it('removes the Lean files the document no longer has, only when told which to keep', async () => {
+    const { dir, lake, env } = setup();
+    await lean.ensureProject(dir, lake, env);
+    for (const n of ['Defs', 'LemA', 'Old']) writeFileSync(join(dir, 'PW', n + '.lean'), `-- ${n}\n`);
+    writeFileSync(join(dir, 'PW', 'notes.txt'), 'keep me');
+    const kept = await lean.runBuild({ dir, lake, env });
+    expect(kept.removed).toEqual([]);
+    expect(kept.files.map((f: { path: string }) => f.path)).toEqual(['PW/Defs.lean', 'PW/LemA.lean', 'PW/Old.lean']);
+    const asked: string[] = [];
+    const built = await lean.runBuild({ dir, lake, env, keep: ['LemA'], remove: async (p: string) => { asked.push(p); await rm(p); } });
+    expect(asked).toEqual([join(dir, 'PW', 'Old.lean')]);
+    expect(built.removed).toEqual(['PW/Old.lean']);
+    expect(built.files.map((f: { path: string }) => f.path)).toEqual(['PW/Defs.lean', 'PW/LemA.lean']);
+    expect(existsSync(join(dir, 'PW', 'Old.lean'))).toBe(false);
+    expect(existsSync(join(dir, 'PW', 'notes.txt'))).toBe(true);
+    expect(readFileSync(join(dir, 'PW.lean'), 'utf8')).toBe('import PW.Defs\nimport PW.LemA\n');
+  });
+
+  it('leaves a file in place when it cannot be removed, and still returns the build', async () => {
+    const { dir, lake, env } = setup();
+    await lean.ensureProject(dir, lake, env);
+    writeFileSync(join(dir, 'PW', 'Old.lean'), '-- Old\n');
+    const built = await lean.runBuild({ dir, lake, env, keep: [], remove: async () => { throw new Error('busy'); } });
+    expect(built.started).toBe(true);
+    expect(built.removed).toEqual([]);
+    expect(existsSync(join(dir, 'PW', 'Old.lean'))).toBe(true);
+  });
+
+  it('ignores files that are not valid Lean module names', async () => {
+    const { dir, lake, env } = setup();
+    await lean.ensureProject(dir, lake, env);
+    writeFileSync(join(dir, 'PW', 'LemA.lean'), '-- A\n');
+    writeFileSync(join(dir, 'PW', 'my-notes.lean'), '-- notes\n');
+    writeFileSync(join(dir, 'PW', 'a b.lean'), '-- b\n');
+    const asked: string[] = [];
+    const built = await lean.runBuild({ dir, lake, env, keep: [], remove: async (p: string) => { asked.push(p); } });
+    expect(built.files.map((f: { path: string }) => f.path)).toEqual(['PW/LemA.lean']);
+    expect(asked).toEqual([join(dir, 'PW', 'LemA.lean')]);
+    expect(readFileSync(join(dir, 'PW.lean'), 'utf8')).toBe('import PW.LemA\n');
+  });
+
+  it('stops what a job started, not only the job', async () => {
+    const { dir, lake, env, claude } = setup();
+    await lean.ensureProject(dir, lake, env);
+    const run = lean.runClaude({ claude, dir, prompt: 'x', args: args(), env: { ...env, FAKE_CLAUDE: 'orphan' } });
+    await new Promise((r) => setTimeout(r, 400));
+    const pid = Number(readFileSync(join(dir, 'grandchild.pid'), 'utf8'));
+    const started = Date.now();
+    run.cancel();
+    expect(await run.done).toMatchObject({ ok: false, cancelled: true });
+    expect(Date.now() - started).toBeLessThan(3000);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(() => process.kill(pid, 0)).toThrow();
+  });
+
+  it('gives up on a build that hangs past its limit', async () => {
+    const { dir, lake, env } = setup();
+    await lean.ensureProject(dir, lake, env);
+    const started = Date.now();
+    const built = await lean.runBuild({ dir, lake, env: { ...env, FAKE_LAKE: 'hang' }, limitMs: 150 });
+    expect(built).toMatchObject({ started: true, code: null, removed: [] });
+    expect(Date.now() - started).toBeLessThan(3000);
   });
 
   it('says a build did not start when lake is missing', async () => {

@@ -13,6 +13,10 @@ const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const JOB_LIMIT_MS = 30 * 60 * 1000;
 const BUILD_LIMIT_MS = 10 * 60 * 1000;
 const WINDOWS = process.platform === 'win32';
+const KILL_GRACE_MS = 2000;
+// Only a file named like a Lean identifier can be imported; any other name
+// in PW/ would break the build of every module if PW.lean imported it.
+const MODULE_FILE = /^[A-Za-z_][A-Za-z0-9_']*\.lean$/;
 
 const LAKEFILE = `name = "PW"
 version = "0.1.0"
@@ -111,7 +115,7 @@ async function leanFiles(dir) {
   let names = [];
   try { names = await fs.readdir(path.join(dir, 'PW')); } catch { /* no PW yet */ }
   return names
-    .filter((n) => n.endsWith('.lean'))
+    .filter((n) => MODULE_FILE.test(n))
     .sort((a, b) => (a === 'Defs.lean' ? -1 : b === 'Defs.lean' ? 1 : a.localeCompare(b)))
     .map((n) => `PW/${n}`);
 }
@@ -193,15 +197,35 @@ function activity(event, dir) {
   return lines;
 }
 
+/**
+ * Stops a program and what it started. Off Windows the program leads its own
+ * process group (see `detached` where it is spawned), so the whole group gets
+ * the signal; otherwise a `lean` started by `lake` would outlive it.
+ */
+function stop(child) {
+  if (!WINDOWS && child.pid) {
+    try { process.kill(-child.pid, 'SIGTERM'); return; } catch { /* fall back to the child alone */ }
+  }
+  child.kill();
+}
+
 /** Starts a job. `done` never rejects; `cancel` stops the job. */
 function runClaude({ claude, dir, prompt, args, env, onLine = () => {}, limitMs = JOB_LIMIT_MS }) {
-  const child = spawn(claude, args, { cwd: dir, env, stdio: ['pipe', 'pipe', 'pipe'], shell: WINDOWS });
+  const child = spawn(claude, args, { cwd: dir, env, stdio: ['pipe', 'pipe', 'pipe'], shell: WINDOWS, detached: !WINDOWS });
   let cancelled = false;
   let timedOut = false;
   let result = null;
   let buffer = '';
   let stderr = '';
-  const timer = setTimeout(() => { timedOut = true; child.kill(); }, limitMs);
+  let settle = () => {};
+  let grace = null;
+  // A process the job started may hold the output pipes open, so `close` can
+  // be late or never come: after the kill, give up waiting for it.
+  const halt = () => {
+    stop(child);
+    grace = setTimeout(() => settle('late'), KILL_GRACE_MS);
+  };
+  const timer = setTimeout(() => { timedOut = true; halt(); }, limitMs);
 
   // The stream is one JSON object per line, but a chunk may end mid-line and
   // a line may not be JSON at all (a warning printed by something underneath).
@@ -225,40 +249,78 @@ function runClaude({ claude, dir, prompt, args, env, onLine = () => {}, limitMs 
   child.stderr.on('data', (chunk) => { stderr = (stderr + chunk).slice(-4000); });
 
   const done = new Promise((resolve) => {
-    child.on('error', (err) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      resolve({ ok: false, report: null, cancelled: false, error: `Could not start claude: ${err.message}` });
+      clearTimeout(grace);
+      resolve(value);
+    };
+    settle = () => finish(
+      cancelled ? { ok: false, report: null, cancelled: true, error: 'Cancelled.' }
+        : { ok: false, report: null, cancelled: false, error: 'Stopped: the job ran past its time limit.' });
+    child.on('error', (err) => {
+      finish({ ok: false, report: null, cancelled: false, error: `Could not start claude: ${err.message}` });
     });
     child.on('close', (code) => {
-      clearTimeout(timer);
       take(buffer);
-      if (cancelled) resolve({ ok: false, report: null, cancelled: true, error: 'Cancelled.' });
-      else if (timedOut) resolve({ ok: false, report: null, cancelled: false, error: 'Stopped: the job ran past its time limit.' });
-      else if (!result) resolve({ ok: false, report: null, cancelled: false, error: stderr.trim().split('\n').pop() || `claude exited with code ${code}` });
-      else if (result.is_error) resolve({ ok: false, report: result.structured_output ?? null, cancelled: false, error: (typeof result.result === 'string' && result.result) || 'The run ended with an error.' });
-      else resolve({ ok: true, report: result.structured_output ?? null, cancelled: false });
+      if (cancelled || timedOut) settle();
+      else if (!result) finish({ ok: false, report: null, cancelled: false, error: stderr.trim().split('\n').pop() || `claude exited with code ${code}` });
+      else if (result.is_error) finish({ ok: false, report: result.structured_output ?? null, cancelled: false, error: (typeof result.result === 'string' && result.result) || 'The run ended with an error.' });
+      else finish({ ok: true, report: result.structured_output ?? null, cancelled: false });
     });
   });
   child.stdin.on('error', () => { /* the process went away before reading the prompt; `close` reports it */ });
   child.stdin.end(prompt);
-  return { done, cancel: () => { cancelled = true; child.kill(); } };
+  return { done, cancel: () => { if (cancelled) return; cancelled = true; halt(); } };
 }
 
-/** Runs `lake build` and returns what it printed with the Lean files as they now are. */
-async function runBuild({ dir, lake, env, limitMs = BUILD_LIMIT_MS }) {
+/** Removes the Lean files whose module is neither Defs nor wanted; returns those it removed. */
+async function removeStale(dir, keep, remove) {
+  const removed = [];
+  for (const p of await leanFiles(dir)) {
+    const name = path.basename(p, '.lean');
+    if (name === 'Defs' || keep.includes(name)) continue;
+    try { await remove(path.join(dir, p)); removed.push(p); } catch { /* leave it; the build does not depend on it */ }
+  }
+  return removed.sort();
+}
+
+/**
+ * Runs `lake build` and returns what it printed with the Lean files as they
+ * now are. Given `keep` (module names), first removes the other modules the
+ * document no longer has, except Defs.
+ */
+async function runBuild({ dir, lake, env, limitMs = BUILD_LIMIT_MS, keep, remove = (p) => fs.rm(p) }) {
+  const removed = keep ? await removeStale(dir, keep, remove) : [];
   const paths = await writeRoot(dir);
   const ran = await new Promise((resolve) => {
     let output = '';
-    const child = spawn(lake, ['build'], { cwd: dir, env, shell: WINDOWS });
-    const timer = setTimeout(() => child.kill(), limitMs);
+    let settled = false;
+    let grace = null;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(grace);
+      resolve(value);
+    };
+    const child = spawn(lake, ['build'], { cwd: dir, env, shell: WINDOWS, detached: !WINDOWS });
+    // Lean processes Lake started may keep the pipes open after the kill, so
+    // do not wait for `close` past a short grace.
+    const timer = setTimeout(() => {
+      stop(child);
+      grace = setTimeout(() => finish({ started: true, code: null, output }), KILL_GRACE_MS);
+    }, limitMs);
     child.stdout.on('data', (c) => { output += c; });
     child.stderr.on('data', (c) => { output += c; });
-    child.on('error', (err) => { clearTimeout(timer); resolve({ started: false, code: null, output: err.message }); });
-    child.on('close', (code) => { clearTimeout(timer); resolve({ started: true, code, output }); });
+    child.on('error', (err) => finish({ started: false, code: null, output: err.message }));
+    child.on('close', (code) => finish({ started: true, code, output }));
   });
   const files = [];
   for (const p of paths) files.push({ path: p, text: await fs.readFile(path.join(dir, p), 'utf8') });
-  return { ...ran, files };
+  return { ...ran, files, removed };
 }
 
 /** What mechanization.json holds, or null if it is missing or not JSON. */
