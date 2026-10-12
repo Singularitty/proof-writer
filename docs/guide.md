@@ -24,6 +24,10 @@ the editor and the preview, so the others get the room. At least one stays
 open, and the choice is remembered. Jumping to a block or to its place in the
 preview opens that view again if it was collapsed.
 
+The button at the right of the preview's toolbar moves the preview to a window
+of its own, for a second screen. It keeps following the document there. The
+same button, or closing that window, puts it back.
+
 The **⇢** button beside a block goes the other way: it scrolls the preview to
 that block's output and tints it for a moment.
 

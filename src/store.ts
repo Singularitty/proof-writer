@@ -4,7 +4,7 @@ import type { Block, Doc } from './model/types';
 import { emptyDoc, sampleDoc } from './model/sample';
 import { uid } from './model/util';
 import type { GitHubSource } from './util/github';
-import { readViews, showView, toggleView, type View, type Views } from './model/layout';
+import { makeRoomToDetach, readViews, showView, toggleView, type View, type Views } from './model/layout';
 
 const INDEX_KEY = 'proof-writer:index';
 const DOC_KEY = (id: string) => `proof-writer:doc:${id}`;
@@ -86,6 +86,9 @@ interface State {
   views: Views;
   toggleView: (v: View) => void;
   showView: (v: View) => void;
+  /** The preview is in a window of its own (see util/detach). */
+  previewDetached: boolean;
+  setPreviewDetached: (d: boolean) => void;
   setGithubDialog: (m: 'open' | 'commit' | null) => void;
 
   update: (f: (d: Draft<Doc>) => void, editKey?: string) => void;
@@ -166,10 +169,13 @@ export const useStore = create<State>((set, get) => ({
   githubDialog: null,
   pdfTarget: null,
   // a collapsed preview opens to show what was asked for
-  showInPdf: (id) => set({ pdfTarget: { id, n: (get().pdfTarget?.n ?? 0) + 1 }, views: keepViews(showView(get().views, 'preview')) }),
+  showInPdf: (id) => set({ pdfTarget: { id, n: (get().pdfTarget?.n ?? 0) + 1 }, views: get().previewDetached ? get().views : keepViews(showView(get().views, 'preview')) }),
   views: readViews(load(VIEWS_KEY)),
-  toggleView: (v) => set({ views: keepViews(toggleView(get().views, v)) }),
+  toggleView: (v) => set({ views: keepViews(toggleView(get().views, v, get().previewDetached)) }),
   showView: (v) => set({ views: keepViews(showView(get().views, v)) }),
+  previewDetached: false,
+  // coming back, the preview is shown: it was on screen a moment ago
+  setPreviewDetached: (d) => set({ previewDetached: d, views: keepViews(d ? makeRoomToDetach(get().views) : showView(get().views, 'preview')) }),
   setGithubDialog: (m) => set({ githubDialog: m }),
 
   update: (f, editKey) => {

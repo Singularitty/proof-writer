@@ -40,9 +40,19 @@ function createWindow(fileToOpen) {
     },
   });
   // Links (e.g. in the README or diagnostics) open in the system browser.
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  // The one window the app opens itself is the detached preview, which it fills in from this one.
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    if (url === 'about:blank' && frameName === 'proof-writer-preview') {
+      return { action: 'allow', overrideBrowserWindowOptions: { width: 820, height: 1000, title: 'Preview — Proof Writer', backgroundColor: '#1b1d22', autoHideMenuBar: true } };
+    }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
+  });
+  win.webContents.on('did-create-window', (child) => {
+    previewOwner.set(child, win);
+    child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    child.webContents.on('will-navigate', (e) => e.preventDefault());
+    win.once('closed', () => { if (!child.isDestroyed()) child.close(); });
   });
   win.webContents.on('will-navigate', (e, url) => {
     if (!url.startsWith('app://')) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); }
@@ -51,6 +61,9 @@ function createWindow(fileToOpen) {
   win.loadURL('app://-/index.html');
   return win;
 }
+
+/** The main window each detached preview belongs to; menu commands given to a preview go there. */
+const previewOwner = new WeakMap();
 
 // A .json passed on the command line (or via "Open with") is opened on load.
 const pendingOpen = new Map();
@@ -155,7 +168,10 @@ ipcMain.handle('open-pdf', async (_e, { name, data }) => {
 });
 
 function buildMenu() {
-  const send = (channel) => () => BrowserWindow.getFocusedWindow()?.webContents.send('menu', channel);
+  const send = (channel) => () => {
+    const focused = BrowserWindow.getFocusedWindow();
+    (previewOwner.get(focused) ?? focused)?.webContents.send('menu', channel);
+  };
   const isMac = process.platform === 'darwin';
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(isMac ? [{ role: 'appMenu' }] : []),

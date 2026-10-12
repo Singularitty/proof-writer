@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ALL_VIEWS, gridColumns, minWidth, openCount, readViews, showView, toggleView } from '../src/model/layout';
+import { ALL_VIEWS, dockedViews, gridColumns, makeRoomToDetach, minWidth, openCount, readViews, showView, toggleView } from '../src/model/layout';
 
 const only = (...open: string[]) => ({ sidebar: open.includes('sidebar'), editor: open.includes('editor'), preview: open.includes('preview') });
 
@@ -64,5 +64,22 @@ describe('readViews', () => {
 describe('openCount', () => {
   it('counts the open views', () => {
     expect(openCount(only('sidebar', 'preview'))).toBe(2);
+  });
+});
+
+describe('a preview detached into its own window', () => {
+  it('takes no room in the main window', () => {
+    expect(dockedViews(ALL_VIEWS, true)).toEqual(only('sidebar', 'editor'));
+    expect(dockedViews(ALL_VIEWS, false)).toBe(ALL_VIEWS);
+  });
+  it('does not count as a view left open in the main window', () => {
+    const v = only('editor', 'preview');
+    expect(toggleView(v, 'editor', true)).toBe(v);
+    expect(toggleView(ALL_VIEWS, 'editor', true)).toEqual(only('sidebar', 'preview'));
+  });
+  it('opens the editor when the preview was the only view', () => {
+    expect(makeRoomToDetach(only('preview'))).toEqual(only('editor', 'preview'));
+    const v = only('sidebar', 'preview');
+    expect(makeRoomToDetach(v)).toBe(v);
   });
 });

@@ -505,8 +505,18 @@ body { overflow-x: auto; }
 .files-open { margin: 14px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--dim); font-weight: 600; }
 
 /* collapsed views: hidden, not unmounted, so the preview keeps its drawing and the editor its place */
-.app.no-sidebar > .sidebar, .app.no-editor > .editor, .app.no-preview > .preview { display: none; }
+.app.no-sidebar > .sidebar, .app.no-editor > .editor, .app.no-preview > .preview-dock { display: none; }
 /* without the editor beside it, the sidebar or preview has no neighbour to be ruled off from */
 .app.no-editor.no-preview > .sidebar { border-right: none; }
-.app.no-editor.no-sidebar > .preview { border-left: none; }
+.app.no-editor.no-sidebar .preview { border-left: none; }
 .view-toggles > button:disabled { opacity: 1; }
+
+/* the preview lives in a box that sits in the main window or, detached, fills a window of its own */
+.preview-dock { min-width: 0; min-height: 0; }
+.preview-slot { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.preview-slot > .preview { flex: 1; }
+body.detached .preview { border-left: none; }
+.preview-bar button:has(svg) { padding: 5px 7px; }
+/* in a narrow window of its own, the toolbar wraps so the button that puts it back stays in reach */
+.preview-bar { flex-wrap: wrap; }
+.view-toggles > button.detached { border-style: dashed; color: var(--accent); }

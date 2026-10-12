@@ -8,6 +8,8 @@ import { anchorSpan, blockAt, type Anchor } from './anchors';
 import { jumpToBlock } from '../components/Tracker';
 import { download, slug } from '../util/download';
 import { desktop } from '../util/desktop';
+import { Icon } from '../components/Icon';
+import { attachPreview, detachPreview } from '../util/detach';
 
 type Tab = 'pdf' | 'typst' | 'latex';
 
@@ -33,6 +35,7 @@ export function Preview() {
   /** Bumped by the Recompile button to run the render again. */
   const [again, setAgain] = useState(0);
   const docId = useStore((s) => s.docId);
+  const detached = useStore((s) => s.previewDetached);
   const drawnDoc = useRef<string | null>(null);
 
   useEffect(() => {
@@ -149,6 +152,9 @@ export function Preview() {
             <button onClick={() => download(`${name}.${tab === 'typst' ? 'typ' : 'tex'}`, code, 'text/plain')}>⤓ .{tab === 'typst' ? 'typ' : 'tex'}</button>
           </>
         )}
+        {detached
+          ? <button onClick={attachPreview} title="Put the preview back in the main window" aria-label="Put the preview back in the main window"><Icon name="attach" /></button>
+          : <button onClick={detachPreview} title="Move the preview to a window of its own" aria-label="Move the preview to a window of its own"><Icon name="detach" /></button>}
       </div>
       {tab === 'pdf' && (
         <div className="pdf-wrap" ref={wrap}>

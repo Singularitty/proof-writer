@@ -7,6 +7,8 @@ const PATHS = {
   sidebar: <><rect x="3" y="4" width="14" height="12" rx="1.5" /><path d="M3.8 4.8h3.4v10.4H3.8z" fill="currentColor" stroke="none" /></>,
   editor: <><rect x="3" y="4" width="14" height="12" rx="1.5" /><path d="M7.5 4.8h5v10.4h-5z" fill="currentColor" stroke="none" /></>,
   preview: <><rect x="3" y="4" width="14" height="12" rx="1.5" /><path d="M12.8 4.8h3.4v10.4h-3.4z" fill="currentColor" stroke="none" /></>,
+  detach: <path d="M11 4h5v5M16 4l-6.5 6.5M8 5H5.5A1.5 1.5 0 0 0 4 6.5v8A1.5 1.5 0 0 0 5.5 16h8a1.5 1.5 0 0 0 1.5-1.5V12" />,
+  attach: <path d="M14.5 10.5h-5v-5M9.5 10.5 16 4M8 5H5.5A1.5 1.5 0 0 0 4 6.5v8A1.5 1.5 0 0 0 5.5 16h8a1.5 1.5 0 0 0 1.5-1.5V13" />,
 };
 
 export function Icon({ name }: { name: keyof typeof PATHS }) {

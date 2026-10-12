@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { hasUnsavedEdits, useStore } from './store';
 import { BlockList } from './components/Blocks';
 import { Sidebar } from './components/Sidebar';
@@ -13,7 +14,8 @@ import { loadFile } from './util/files';
 import { canSaveToFile, pickFileToOpen, saveToFile, useJustSaved, useSaveFileName } from './util/browserFiles';
 import { GitHubDialog } from './components/GitHubDialog';
 import type { Doc } from './model/types';
-import { VIEWS, gridColumns, hasSplitter, minWidth, openCount } from './model/layout';
+import { VIEWS, dockedViews, gridColumns, hasSplitter, minWidth, openCount } from './model/layout';
+import { dockPreview, focusPreviewWindow, previewSlot } from './util/detach';
 
 type Theme = 'system' | 'light' | 'dark';
 const THEME_ICON = { system: 'auto', light: 'sun', dark: 'moon' } as const;
@@ -48,6 +50,9 @@ export default function App() {
     try { return +(localStorage.getItem('proof-writer:pw') ?? '') || 640; } catch { return 640; }
   });
   const views = useStore((s) => s.views);
+  const previewDetached = useStore((s) => s.previewDetached);
+  /** What the main window shows; a detached preview is elsewhere. */
+  const docked = dockedViews(views, previewDetached);
   const [showSettings, setShowSettings] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -131,7 +136,7 @@ export default function App() {
     e.preventDefault();
     const startX = e.clientX;
     const start = previewWidth;
-    const move = (ev: MouseEvent) => setPreviewWidth(Math.max(320, Math.min(window.innerWidth - (views.sidebar ? 600 : 380), start - (ev.clientX - startX))));
+    const move = (ev: MouseEvent) => setPreviewWidth(Math.max(320, Math.min(window.innerWidth - (docked.sidebar ? 600 : 380), start - (ev.clientX - startX))));
     const up = () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
@@ -143,7 +148,7 @@ export default function App() {
 
   const importFile = async (f: File) => loadFile(await f.text(), undefined, f.name);
   return (
-    <div className={'app' + VIEWS.map((v) => (views[v] ? '' : ` no-${v}`)).join('')} style={{ gridTemplateColumns: gridColumns(views, previewWidth), minWidth: minWidth(views) }}>
+    <div className={'app' + VIEWS.map((v) => (docked[v] ? '' : ` no-${v}`)).join('')} style={{ gridTemplateColumns: gridColumns(docked, previewWidth), minWidth: minWidth(docked) }}>
       <header className="topbar">
         <span className="logo">⊢ Proof Writer</span>
         <input className="doc-title" value={doc.title} onChange={(e) => update((d) => { d.title = e.target.value; }, 'title')} placeholder="Document title" />
@@ -155,14 +160,16 @@ export default function App() {
         )}
         <span className="grow" />
         <span className="btn-group view-toggles" role="group" aria-label="Views">
-          {VIEWS.map((v) => (
+          {VIEWS.map((v) => (v === 'preview' && previewDetached ? (
+            <button key={v} className="detached" aria-label="Preview (in its own window)" title="The preview is in its own window. Click to bring it to the front." onClick={focusPreviewWindow}><Icon name={v} /></button>
+          ) : (
             <button
               key={v} className={views[v] ? 'active' : ''} aria-pressed={views[v]} aria-label={v[0].toUpperCase() + v.slice(1)}
-              disabled={views[v] && openCount(views) === 1}
-              title={views[v] ? (openCount(views) === 1 ? `The ${v} is the only view open` : `Collapse the ${v}`) : `Show the ${v}`}
+              disabled={docked[v] && openCount(docked) === 1}
+              title={views[v] ? (openCount(docked) === 1 ? `The ${v} is the only view open` : `Collapse the ${v}`) : `Show the ${v}`}
               onClick={() => useStore.getState().toggleView(v)}
             ><Icon name={v} /></button>
-          ))}
+          )))}
         </span>
         <button className="theme-toggle" onClick={cycleTheme} title={`Theme: ${theme} (click to change)`} aria-label={`Theme: ${theme}`}><Icon name={THEME_ICON[theme]} /></button>
         <button onClick={() => useStore.getState().undo()} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)"><Icon name="undo" /></button>
@@ -224,8 +231,10 @@ export default function App() {
           <SectionPager />
         </div>
       </main>
-      {hasSplitter(views) && <div className="splitter" onMouseDown={startDrag} />}
-      <Preview />
+      {hasSplitter(docked) && <div className="splitter" onMouseDown={startDrag} />}
+      {/* the preview is drawn into a box of its own, which sits here or in the detached window */}
+      <div className="preview-dock" ref={dockPreview} />
+      {createPortal(<Preview />, previewSlot())}
       {githubDialog && <GitHubDialog mode={githubDialog} onClose={() => useStore.getState().setGithubDialog(null)} />}
     </div>
   );

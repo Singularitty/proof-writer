@@ -13,10 +13,19 @@ export const openCount = (v: Views) => VIEWS.filter((k) => v[k]).length;
 /** The splitter sets the preview's width against the editor, so it needs both. */
 export const hasSplitter = (v: Views) => v.editor && v.preview;
 
-/** Collapses or opens a view. The last open view stays open. */
-export function toggleView(v: Views, which: View): Views {
-  if (v[which] && openCount(v) === 1) return v;
+/** The views in the main window: a preview detached into a window of its own is not one of them. */
+export const dockedViews = (v: Views, previewDetached: boolean): Views => (previewDetached && v.preview ? { ...v, preview: false } : v);
+
+/** Collapses or opens a view. The last view open in the main window stays open. */
+export function toggleView(v: Views, which: View, previewDetached = false): Views {
+  const docked = dockedViews(v, previewDetached);
+  if (docked[which] && openCount(docked) === 1) return v;
   return { ...v, [which]: !v[which] };
+}
+
+/** Before the preview leaves the main window, makes sure something else is open there. */
+export function makeRoomToDetach(v: Views): Views {
+  return v.sidebar || v.editor ? v : { ...v, editor: true };
 }
 
 export function showView(v: Views, which: View): Views {
