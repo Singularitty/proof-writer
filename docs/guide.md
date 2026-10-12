@@ -201,6 +201,91 @@ Not checked: induction on the structure of a term or type (cases drawn from a
 grammar), whether the premises of a proof tree step fit together, and whether
 the prose of a proof is correct.
 
+## Mechanizing in Lean
+
+In the desktop app, the **Lean** tab has [Claude Code](https://claude.com/claude-code)
+turn the document into a [Lean 4](https://lean-lang.org) development and prove
+its statements there. It needs both programs installed; if one is missing the
+tab says which and how to get it. The document has to be saved to a file.
+
+**Sync definitions** translates every grammar, rules block and definition, and
+writes the Lean statement of every lemma and theorem with its proof left open.
+**Prove**, beside a statement that has a written proof, asks for a Lean proof
+that follows it: the same induction, the same cases, the same lemmas. A proof
+may use a lemma that is not proved yet; it is then shown as proved *assuming*
+that lemma.
+
+Nothing runs until you press a button. Editing a block marks it **out of
+date**, and editing a definition marks every statement out of date, until the
+next sync; a proof request syncs first if anything is.
+
+| Status | Meaning |
+| --- | --- |
+| Not translated | No Lean counterpart yet |
+| Out of date | Changed since it was translated |
+| Translated | A definition that compiles |
+| Stated, not proved | The Lean statement compiles; no proof yet, or the file still has a `sorry` |
+| Proved | Builds with nothing assumed |
+| Proved with deviations | Builds, but the Lean statement differs from the text; the difference is listed |
+| Failed | Did not compile; the reason is listed |
+
+The app decides these itself by building the project and reading the files,
+and it checks for `sorry` and `axiom` itself. A `sorry` anywhere in a
+statement's file keeps it at Stated, not proved, and a `sorry` in the
+definitions makes that definition Failed. A statement is never shown as proved
+because Claude said so.
+
+Under each row the tab lists what the last job found:
+
+* a **Deviation**: where the Lean text had to differ from yours, such as a
+  hypothesis you left implicit;
+* an **Inconsistency**: two blocks that disagree, such as a proof case that
+  uses a lemma in a way its statement does not allow;
+* **Stuck**: where a proof stopped, with Lean's error;
+* a **proposed edit** to one field of the document, shown before and after.
+  **Accept** makes the edit (undo takes it back); **Dismiss** hides it for
+  good. A proposal for text you have since changed can no longer be accepted, and
+  proposals cannot be accepted or dismissed while a job is running.
+
+Claude never edits the document. It only writes Lean files.
+
+The **Model** and **Effort** selectors choose what the next job runs with;
+*Default* uses your Claude Code settings. The choice is remembered.
+
+### The Lean folder
+
+For `stlc.proof.json` the Lean files are in `stlc-lean/` beside it, an
+ordinary Lake project with no dependencies that you can open in an editor:
+
+* `PW/Defs.lean` holds the definitions, and `PW/<Label>.lean` one statement
+  each. A comment `-- pw: <id>` above a declaration ties it to a block.
+* `CLAUDE.md` holds the instructions Claude follows. The app rewrites it
+  before every job.
+* `CONVENTIONS.md` is yours: write there how you want things represented
+  ("contexts are lists, newest binding first") and it is followed where it does
+  not conflict with the rules in `CLAUDE.md`.
+* `mechanization.json` is the app's record of statuses and findings.
+
+A sync also tidies the folder. A statement's file is named after its label, so
+when a statement is deleted from the document, or its label changes, its old
+file is moved to the system trash; the proof of a relabelled statement is
+carried over to the new file by the sync. For the same reason, a `.lean` file
+you add by hand under `PW/` whose name is not one of the document's statements
+is moved to the trash on the next sync. Put your own Lean files outside `PW/`.
+The last job's list shows which files were moved.
+
+Commit the folder with the document if you want the mechanization kept;
+`.lake/` inside it is build output and is ignored. If you rename or move the
+document, rename or move the folder with it, or the next sync starts afresh.
+
+### Limits
+
+Jobs run one at a time and stop after 30 minutes. **Cancel** and quitting the
+app stop a job in the same way. Each of the three stops Claude Code and the Lean
+build it started. Proofs use core Lean only,
+so facts a library would provide (about finite maps, say) have to be proved
+or avoided. A proof Claude cannot finish is reported, not papered over, and
+that is often a sign the written proof has a gap.
 ## Files in the desktop app
 
 The **Files** tab shows a folder. **Open folder…** chooses it, and the app
