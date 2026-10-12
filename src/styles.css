@@ -438,8 +438,7 @@ table.grammar tr:hover td.alts .mini.add, table.grammar tr:focus-within td.alts 
 .docs li { grid-template-columns: minmax(0, 1fr) auto; }
 .docs li a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-body { scrollbar-gutter: stable; }
-/* a window too narrow for the three columns scrolls sideways instead of hiding the toolbar and editor */
-.app { min-width: 906px; }
+/* a window too narrow for the open views (.app's min-width, set in App) scrolls sideways instead of hiding the toolbar and editor */
 body { overflow-x: auto; }
 /* the title gives way before the toolbar buttons are pushed off the bar */
 .topbar { min-width: 0; }
@@ -504,3 +503,10 @@ body { overflow-x: auto; }
 .doc-file { color: var(--dim); }
 .files-error { color: var(--danger); font-size: 12px; margin: 4px 0; }
 .files-open { margin: 14px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--dim); font-weight: 600; }
+
+/* collapsed views: hidden, not unmounted, so the preview keeps its drawing and the editor its place */
+.app.no-sidebar > .sidebar, .app.no-editor > .editor, .app.no-preview > .preview { display: none; }
+/* without the editor beside it, the sidebar or preview has no neighbour to be ruled off from */
+.app.no-editor.no-preview > .sidebar { border-right: none; }
+.app.no-editor.no-sidebar > .preview { border-left: none; }
+.view-toggles > button:disabled { opacity: 1; }

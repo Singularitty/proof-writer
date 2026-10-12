@@ -13,6 +13,7 @@ import { loadFile } from './util/files';
 import { canSaveToFile, pickFileToOpen, saveToFile, useJustSaved, useSaveFileName } from './util/browserFiles';
 import { GitHubDialog } from './components/GitHubDialog';
 import type { Doc } from './model/types';
+import { VIEWS, gridColumns, hasSplitter, minWidth, openCount } from './model/layout';
 
 type Theme = 'system' | 'light' | 'dark';
 const THEME_ICON = { system: 'auto', light: 'sun', dark: 'moon' } as const;
@@ -46,6 +47,7 @@ export default function App() {
   const [previewWidth, setPreviewWidth] = useState(() => {
     try { return +(localStorage.getItem('proof-writer:pw') ?? '') || 640; } catch { return 640; }
   });
+  const views = useStore((s) => s.views);
   const [showSettings, setShowSettings] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -129,7 +131,7 @@ export default function App() {
     e.preventDefault();
     const startX = e.clientX;
     const start = previewWidth;
-    const move = (ev: MouseEvent) => setPreviewWidth(Math.max(320, Math.min(window.innerWidth - 600, start - (ev.clientX - startX))));
+    const move = (ev: MouseEvent) => setPreviewWidth(Math.max(320, Math.min(window.innerWidth - (views.sidebar ? 600 : 380), start - (ev.clientX - startX))));
     const up = () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
@@ -141,7 +143,7 @@ export default function App() {
 
   const importFile = async (f: File) => loadFile(await f.text(), undefined, f.name);
   return (
-    <div className="app" style={{ gridTemplateColumns: `minmax(220px, 300px) minmax(420px, 1fr) 6px minmax(260px, ${previewWidth}px)` }}>
+    <div className={'app' + VIEWS.map((v) => (views[v] ? '' : ` no-${v}`)).join('')} style={{ gridTemplateColumns: gridColumns(views, previewWidth), minWidth: minWidth(views) }}>
       <header className="topbar">
         <span className="logo">⊢ Proof Writer</span>
         <input className="doc-title" value={doc.title} onChange={(e) => update((d) => { d.title = e.target.value; }, 'title')} placeholder="Document title" />
@@ -152,6 +154,16 @@ export default function App() {
           </span>
         )}
         <span className="grow" />
+        <span className="btn-group view-toggles" role="group" aria-label="Views">
+          {VIEWS.map((v) => (
+            <button
+              key={v} className={views[v] ? 'active' : ''} aria-pressed={views[v]} aria-label={v[0].toUpperCase() + v.slice(1)}
+              disabled={views[v] && openCount(views) === 1}
+              title={views[v] ? (openCount(views) === 1 ? `The ${v} is the only view open` : `Collapse the ${v}`) : `Show the ${v}`}
+              onClick={() => useStore.getState().toggleView(v)}
+            ><Icon name={v} /></button>
+          ))}
+        </span>
         <button className="theme-toggle" onClick={cycleTheme} title={`Theme: ${theme} (click to change)`} aria-label={`Theme: ${theme}`}><Icon name={THEME_ICON[theme]} /></button>
         <button onClick={() => useStore.getState().undo()} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)"><Icon name="undo" /></button>
         <button onClick={() => useStore.getState().redo()} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo (Ctrl+Shift+Z)"><Icon name="redo" /></button>
@@ -212,7 +224,7 @@ export default function App() {
           <SectionPager />
         </div>
       </main>
-      <div className="splitter" onMouseDown={startDrag} />
+      {hasSplitter(views) && <div className="splitter" onMouseDown={startDrag} />}
       <Preview />
       {githubDialog && <GitHubDialog mode={githubDialog} onClose={() => useStore.getState().setGithubDialog(null)} />}
     </div>

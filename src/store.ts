@@ -4,6 +4,7 @@ import type { Block, Doc } from './model/types';
 import { emptyDoc, sampleDoc } from './model/sample';
 import { uid } from './model/util';
 import type { GitHubSource } from './util/github';
+import { readViews, showView, toggleView, type View, type Views } from './model/layout';
 
 const INDEX_KEY = 'proof-writer:index';
 const DOC_KEY = (id: string) => `proof-writer:doc:${id}`;
@@ -31,6 +32,12 @@ function load<T>(key: string): T | null {
   } catch {
     return null;
   }
+}
+const VIEWS_KEY = 'proof-writer:views';
+/** Remembers the open views for next time. Losing this is harmless, so a failure is not reported. */
+function keepViews(v: Views): Views {
+  try { localStorage.setItem(VIEWS_KEY, JSON.stringify(v)); } catch { /* ignore */ }
+  return v;
 }
 /** Writes to localStorage; on failure (storage full or blocked) flags it so the UI can warn. */
 function save(key: string, v: unknown): boolean {
@@ -75,6 +82,10 @@ interface State {
   /** The block the preview was last asked to show; `n` makes each request distinct. */
   pdfTarget: { id: string; n: number } | null;
   showInPdf: (id: string) => void;
+  /** Which of the sidebar, editor and preview are open rather than collapsed. */
+  views: Views;
+  toggleView: (v: View) => void;
+  showView: (v: View) => void;
   setGithubDialog: (m: 'open' | 'commit' | null) => void;
 
   update: (f: (d: Draft<Doc>) => void, editKey?: string) => void;
@@ -154,7 +165,11 @@ export const useStore = create<State>((set, get) => ({
   storageError: null,
   githubDialog: null,
   pdfTarget: null,
-  showInPdf: (id) => set({ pdfTarget: { id, n: (get().pdfTarget?.n ?? 0) + 1 } }),
+  // a collapsed preview opens to show what was asked for
+  showInPdf: (id) => set({ pdfTarget: { id, n: (get().pdfTarget?.n ?? 0) + 1 }, views: keepViews(showView(get().views, 'preview')) }),
+  views: readViews(load(VIEWS_KEY)),
+  toggleView: (v) => set({ views: keepViews(toggleView(get().views, v)) }),
+  showView: (v) => set({ views: keepViews(showView(get().views, v)) }),
   setGithubDialog: (m) => set({ githubDialog: m }),
 
   update: (f, editKey) => {

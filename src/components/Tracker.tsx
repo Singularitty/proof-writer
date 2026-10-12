@@ -12,6 +12,7 @@ export function useTracker(): TrackerView {
 
 export function jumpToBlock(id: string) {
   // Selecting first lets the editor switch to the section holding this block before scrolling to it.
+  useStore.getState().showView('editor');
   useStore.getState().selectBlock(id);
   setTimeout(() => document.getElementById('block-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
 }

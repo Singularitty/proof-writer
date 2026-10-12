@@ -19,6 +19,11 @@ the page and scrolls the editor to it, switching section if needed.
 **↻ Recompile** above the preview compiles the whole document again and redraws
 it from scratch, in case the preview ever looks wrong.
 
+**Views.** The three buttons in the top bar collapse and reopen the sidebar,
+the editor and the preview, so the others get the room. At least one stays
+open, and the choice is remembered. Jumping to a block or to its place in the
+preview opens that view again if it was collapsed.
+
 The **⇢** button beside a block goes the other way: it scrolls the preview to
 that block's output and tints it for a moment.
 
