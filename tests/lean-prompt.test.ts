@@ -77,6 +77,10 @@ describe('the instructions and the report schema', () => {
   it('state the rules a job is held to', () => {
     for (const phrase of ['-- pw:', 'PW/Defs.lean', 'axiom', 'sorry', 'document.json', 'CONVENTIONS.md', 'lake build']) expect(instructions).toContain(phrase);
   });
+  it('forbid, by name, the files a job must not touch', () => {
+    const mustNot = instructions.split('## What must not be done')[1].split('\n## ')[0];
+    for (const name of ['document.json', 'mechanization.json', 'PW/Defs.lean', 'CONVENTIONS.md']) expect(mustNot).toContain(name);
+  });
   it('offer the models and efforts the CLI takes', () => {
     expect(MODELS).toEqual(['fable', 'opus', 'sonnet', 'haiku']);
     expect(EFFORTS).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);

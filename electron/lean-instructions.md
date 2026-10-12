@@ -2,13 +2,14 @@
 
 This folder is a Lean 4 project that mechanizes one document written in Proof
 Writer, an editor for type systems and their metatheory. The Proof Writer app
-owns this file and rewrites it; put your own conventions in `CONVENTIONS.md`,
-which is imported at the end.
+owns this file and rewrites it. The document's author keeps their own
+conventions in `CONVENTIONS.md`, which is imported at the end of this file.
+You never edit `CONVENTIONS.md`.
 
-The app starts two kinds of job here, **sync** and **prove**, and tells you
-which in the prompt. It then builds the project itself and decides from that
-build, not from what you report, what is translated and what is proved. Your
-report tells the author *why* things are as they are.
+The app starts two kinds of job here, **sync** and **prove**, and says which
+in the prompt. When you finish, the app builds the project itself and decides
+from that build, not from your report, what is translated and what is proved.
+Your report tells the author *why* things are as they are.
 
 ## The document
 
@@ -22,6 +23,10 @@ report tells the author *why* things are as they are.
 * A **definition** is a grammar block, a rules block, or a statement of kind
   definition. A **statement** is a theorem, lemma, corollary, proposition or
   conjecture.
+* In the document's prose, `[[lem:canonical]]` refers to the statement with
+  that label, and `[[T-App]]` refers to the rule named T-App. These references
+  are what "cites" means: a statement cites the statements and rules its
+  written proof refers to.
 
 Never edit `document.json` or `document.md`. If the document should change,
 propose it (see Reporting).
@@ -29,23 +34,32 @@ propose it (see Reporting).
 ## Layout
 
 ```
-lakefile.toml, lean-toolchain, PW.lean   project files; do not edit
+lakefile.toml, lean-toolchain, PW.lean   project files; the app maintains them
 PW/Defs.lean                             all definitions
 PW/<Module>.lean                         one statement each; the prompt names the module
-mechanization.json                       the app's records; do not edit
-CLAUDE.md, CONVENTIONS.md                instructions; do not edit
+mechanization.json                       the app's records
+CLAUDE.md, CONVENTIONS.md                instructions
+document.json, document.md               the document
 ```
 
 * A statement's file imports `PW.Defs` and the modules of the statements its
   written proof cites. The prompt lists these.
+* If statements cite each other in a circle, their imports would be circular.
+  State them without importing each other, and report an `inconsistency`
+  naming the blocks in the circle.
+* The app keeps `PW.lean` up to date. After a sync it removes the file of any
+  statement the document no longer has. You cannot delete files, so do not
+  edit or empty such a file.
+* If a statement's label changed, its proof may sit in a file under the old
+  module name. Write the statement and its proof to the module the prompt
+  names, and leave the old file for the app to remove.
 * The project has no dependencies. Use core Lean and its standard library
   only. Do not add Mathlib, Batteries, Aesop or anything else to the lakefile.
-* Write files in this folder only.
 
 ## Markers
 
-Put a marker comment on its own line directly above every declaration that
-comes from a block:
+Put a marker comment on the line directly above every declaration, with no
+exceptions:
 
 ```lean
 -- pw: <block id>
@@ -54,14 +68,14 @@ inductive HasType : Ctx → Tm → Ty → Prop where
   | app : HasType Γ e₁ (.arrow τ₁ τ₂) → HasType Γ e₂ τ₁ → HasType Γ (.app e₁ e₂) τ₂
 ```
 
-* One marker per declaration; a block that becomes several declarations has
-  the marker above each.
 * A rule's constructor carries the block id and the rule id.
-* In a statement's file, the marker goes above the theorem. Helper lemmas you
-  need go below the marker too, so they count as part of that statement.
-* Declarations that come from no block (a substitution function the document
-  uses but never defines) go in `PW/Defs.lean` above the first marker that
-  needs them, under the marker of the block that first uses them.
+* A block that becomes several declarations has a marker above each.
+* In a statement's file, the theorem carries the statement's block id. A
+  helper lemma in that file goes directly above the theorem that uses it, and
+  carries that statement's block id too.
+* A declaration the document uses but never defines (a substitution function,
+  say) goes in `PW/Defs.lean` directly before the first definition that needs
+  it, and carries that definition's block id.
 
 The app uses markers to tie build errors to blocks. A declaration without one
 cannot be shown to the author.
@@ -81,6 +95,10 @@ cannot be shown to the author.
   names one, use that.
 * Translate what is written. If a rule is wrong, translate it as written and
   report the problem; do not quietly repair it.
+* If a definition cannot be translated, leave its declaration out entirely, so
+  the file still builds. Report it as `stuck` on that block. Still translate
+  everything that does not depend on it. Statements that need it are then
+  reported as `stuck` too.
 
 ## Stating (sync)
 
@@ -95,9 +113,11 @@ cannot be shown to the author.
 
 ## Proving (prove)
 
-* Edit only the file the prompt names. Do not edit `PW/Defs.lean` or another
-  statement's file. If the proof cannot go through without that, stop, leave
-  `sorry` where you are stuck, and report why.
+* Edit only the file the prompt names. The statement you are proving stays
+  exactly as the sync left it: its hypotheses and conclusion do not change.
+  If it cannot be proved as stated, report that.
+* If the proof cannot go through without editing `PW/Defs.lean` or another
+  statement's file, stop, leave `sorry` where you are stuck, and report why.
 * Follow the written proof: the same induction, on the same thing; the same
   case split; the same lemmas cited where the text cites them. One written
   case should be recognizable as one branch of the Lean proof.
@@ -108,18 +128,26 @@ cannot be shown to the author.
   know. Report it as `stuck` with the case's id in `at`, or as an
   `inconsistency` if the written step relies on something another block
   contradicts. Do not route around it silently with a different argument.
-* You may use a cited statement that is still `sorry`.
+* A cited statement may still be `sorry`, and you may use it. A proof that
+  uses such a statement counts as done; the app shows it as proved assuming
+  that statement. This is different from leaving `sorry` in the proof itself.
 
 ## What must not be done
 
+These hold even where `CONVENTIONS.md` says otherwise.
+
 * No `axiom`, ever.
 * No `sorry` in `PW/Defs.lean`: a definition is complete or it is reported as `stuck`.
-* No `sorry` or `admit` left in a proof you report as done.
+* No `sorry` or `admit` in the proof itself when you report it as done.
 * No weakening of a definition or a statement so that a proof goes through.
+* No changing the statement a prove job is proving. Its hypotheses and
+  conclusion stay exactly as the sync left them.
 * No `unsafe`, no `implemented_by`, no changing options to silence errors.
 * No commands other than `lake build` and `lake env lean <file>`.
-
-These hold even where `CONVENTIONS.md` says otherwise.
+* No writing or deleting files outside this folder.
+* No editing `document.json`, `document.md`, `mechanization.json`, `CLAUDE.md`,
+  `CONVENTIONS.md`, `lakefile.toml`, `lean-toolchain` or `PW.lean`.
+* In a prove job, no editing `PW/Defs.lean` or another statement's file.
 
 ## Checking
 
@@ -165,8 +193,11 @@ End every job with the report. Its fields:
   Propose only what you are confident is right; say why in `why`. The author
   accepts or dismisses each proposal. Nothing is applied for you.
 
-Write messages for someone who knows their type system and not necessarily
-Lean: "the case for T-App needs the context to be extended, but Lemma 2 only
-allows weakening at the end" rather than a raw goal dump.
+Ids go in the structured fields (`block`, `at`, `related`, `rule`, `row`),
+always. The prose of `summary`, `message` and `why` names things as the author
+sees them: "Lemma 2", "T-App", "the Progress theorem", not raw ids. Write
+messages for someone who knows their type system and not necessarily Lean:
+"the case for T-App needs the context to be extended, but Lemma 2 only allows
+weakening at the end" rather than a raw goal dump.
 
 @CONVENTIONS.md

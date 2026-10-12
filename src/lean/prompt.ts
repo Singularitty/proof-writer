@@ -79,7 +79,7 @@ export function syncPrompt(a: { items: Item[]; stale: Staleness; cites: Map<Id, 
     lines.push('Since the last sync:');
     if (a.stale.stale.size) lines.push(`- Changed blocks: ${ids(a.stale.stale)}`);
     if (a.stale.fresh.size) lines.push(`- New blocks: ${ids(a.stale.fresh)}`);
-    if (a.stale.deleted.length) lines.push(`- Deleted blocks: ${ids(a.stale.deleted)} (remove their declarations, and delete a deleted statement's file)`);
+    if (a.stale.deleted.length) lines.push(`- Deleted blocks: ${ids(a.stale.deleted)} (remove their declarations from PW/Defs.lean; the app removes a deleted statement's file)`);
     if (!a.stale.stale.size && !a.stale.fresh.size && !a.stale.deleted.length) lines.push('- Nothing is recorded as changed; check that every block below has its declaration and that the project builds.');
   }
   lines.push('', 'Definitions, all in PW/Defs.lean, in this order:');
