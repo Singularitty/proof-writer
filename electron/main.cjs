@@ -266,4 +266,6 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
+// jobs run in their own process group, so they would otherwise outlive the app
+app.on('before-quit', () => lean.stopAll());
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

@@ -177,6 +177,18 @@ describe.skipIf(process.platform === 'win32')('the Lean side of the desktop app'
     expect(await slow.done).toMatchObject({ ok: false, cancelled: false, error: expect.stringMatching(/time limit/) });
   });
 
+  it('stops every running program on stopAll, and does nothing when none runs', async () => {
+    const { dir, lake, env, claude } = setup();
+    expect(() => lean.stopAll()).not.toThrow();
+    await lean.ensureProject(dir, lake, env);
+    const run = lean.runClaude({ claude, dir, prompt: 'x', args: args(), env: { ...env, FAKE_CLAUDE: 'hang' } });
+    const started = Date.now();
+    setTimeout(() => lean.stopAll(), 150);
+    expect(await run.done).toMatchObject({ ok: false });
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(() => lean.stopAll()).not.toThrow();
+  });
+
   it('says so when claude cannot be started', async () => {
     const { dir, lake, env } = setup();
     await lean.ensureProject(dir, lake, env);

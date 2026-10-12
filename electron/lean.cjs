@@ -209,9 +209,20 @@ function stop(child) {
   child.kill();
 }
 
+/**
+ * The programs running now. They lead their own process groups, so quitting
+ * the app would not take them along; `stopAll` is how the app ends them.
+ */
+const running = new Set();
+
+function stopAll() {
+  for (const child of running) stop(child);
+}
+
 /** Starts a job. `done` never rejects; `cancel` stops the job. */
 function runClaude({ claude, dir, prompt, args, env, onLine = () => {}, limitMs = JOB_LIMIT_MS }) {
   const child = spawn(claude, args, { cwd: dir, env, stdio: ['pipe', 'pipe', 'pipe'], shell: WINDOWS, detached: !WINDOWS });
+  running.add(child);
   let cancelled = false;
   let timedOut = false;
   let result = null;
@@ -253,6 +264,7 @@ function runClaude({ claude, dir, prompt, args, env, onLine = () => {}, limitMs 
     const finish = (value) => {
       if (settled) return;
       settled = true;
+      running.delete(child);
       clearTimeout(timer);
       clearTimeout(grace);
       resolve(value);
@@ -299,14 +311,16 @@ async function runBuild({ dir, lake, env, limitMs = BUILD_LIMIT_MS, keep, remove
     let output = '';
     let settled = false;
     let grace = null;
+    const child = spawn(lake, ['build'], { cwd: dir, env, shell: WINDOWS, detached: !WINDOWS });
+    running.add(child);
     const finish = (value) => {
       if (settled) return;
       settled = true;
+      running.delete(child);
       clearTimeout(timer);
       clearTimeout(grace);
       resolve(value);
     };
-    const child = spawn(lake, ['build'], { cwd: dir, env, shell: WINDOWS, detached: !WINDOWS });
     // Lean processes Lake started may keep the pipes open after the kill, so
     // do not wait for `close` past a short grace.
     const timer = setTimeout(() => {
@@ -338,5 +352,5 @@ async function writeStatus(dir, status) {
 
 module.exports = {
   MODELS, EFFORTS, leanDir, findTool, findTools, childEnv, ensureProject, recreateProject,
-  writeInstructions, writeSnapshot, claudeArgs, runClaude, runBuild, readStatus, writeStatus,
+  writeInstructions, writeSnapshot, claudeArgs, runClaude, runBuild, stopAll, readStatus, writeStatus,
 };
