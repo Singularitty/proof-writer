@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import type { Block, Snippet } from '../model/types';
 import { uid } from '../model/util';
@@ -10,11 +10,18 @@ import { snippetUses } from '../model/snippets';
 import { hasUnsavedEdits } from '../store';
 import { desktop, fileName } from '../util/desktop';
 import { Files } from './Files';
+import { Lean, useLeanView } from './Lean';
+import { useLean } from '../lean/store';
 
 export function Sidebar() {
-  const [tab, setTab] = useState<'outline' | 'snippets' | 'docs' | 'tracker'>('snippets');
+  const [tab, setTab] = useState<'outline' | 'snippets' | 'docs' | 'tracker' | 'lean'>('snippets');
   const tracker = useTracker();
   const problems = tracker.errors + tracker.warnings;
+  const lean = useLeanView();
+  const leanFailed = lean.statements.concat(lean.definitions).filter((r) => r.status === 'failed').length;
+  // a statement's dot in the editor asks for its row here
+  const focus = useLean((s) => s.focus);
+  useEffect(() => { if (focus) setTab('lean'); }, [focus]);
   return (
     <aside className="sidebar">
       <div className="tabs">
@@ -24,6 +31,11 @@ export function Sidebar() {
         <button className={tab === 'tracker' ? 'active' : ''} onClick={() => setTab('tracker')} title="Missing cases, broken references and unfinished proofs">
           Tracker{problems > 0 && <span className={'tab-count' + (tracker.errors ? ' error' : '')}>{problems}</span>}
         </button>
+        {desktop && (
+          <button className={tab === 'lean' ? 'active' : ''} onClick={() => setTab('lean')} title="Mechanize the definitions and proofs in Lean with Claude Code">
+            Lean{leanFailed > 0 && <span className="tab-count error">{leanFailed}</span>}
+          </button>
+        )}
       </div>
       <div className="sidebar-body">
         {tab === 'outline' && <Outline />}
@@ -32,6 +44,7 @@ export function Sidebar() {
         {tab === 'docs' && desktop && <h4 className="files-open">Open documents</h4>}
         {tab === 'docs' && <Docs />}
         {tab === 'tracker' && <Tracker view={tracker} />}
+        {tab === 'lean' && <Lean />}
       </div>
     </aside>
   );

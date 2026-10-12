@@ -9,6 +9,7 @@ import { newNode, allRules } from '../model/tree';
 import { MathField, ProseField, TextInput } from './Fields';
 import { TreeEditor, RuleView } from './TreeEditor';
 import { useNumbering } from './ProseView';
+import { LeanDot } from './Lean';
 
 // ---------- block factory ----------
 
@@ -446,6 +447,7 @@ function TheoremEditor({ b, fresh }: { b: B<'theorem'>; fresh: boolean }) {
           {Object.entries(THEOREM_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <strong className="thm-num">{num.byId.get(b.id)}</strong>
+        {b.kind !== 'definition' && <LeanDot id={b.id} />}
         <TextInput className="thm-title" value={b.title} placeholder="Name (optional)" onChange={(v) => set((x) => { x.title = v; }, 'tt' + b.id)} />
         <span className="thm-label">
           <span className="lbl">label</span>
