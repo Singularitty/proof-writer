@@ -108,4 +108,39 @@ describe('deriving statuses', () => {
     expect(out.a.proofHash).toBe('p-a');
     expect(out.b.proofHash).toBe('p-b2');
   });
+  it('fails a definition with sorry in its region, and every statement', () => {
+    const out = derive(input({ files: [{ path: 'PW/Defs.lean', text: DEFS + '\n  sorry' }, { path: 'PW/A.lean', text: proved('a') }, { path: 'PW/B.lean', text: proved('b') }] }));
+    expect(out.typ.status).toBe('failed');
+    expect(out.typ.findings).toEqual([{ kind: 'stuck', block: 'typ', message: 'This definition contains `sorry`; definitions must be complete.', lean: { file: 'PW/Defs.lean', line: 9 } }]);
+    expect(out.syn.status).toBe('translated');
+    expect(out.a.findings[0].message).toMatch(/definitions do not compile/);
+    expect(out.b.status).toBe('failed');
+  });
+  it('fails every definition for a sorry above the first marker of its file', () => {
+    const out = derive(input({ files: [{ path: 'PW/Defs.lean', text: 'sorry\n' + DEFS }, { path: 'PW/A.lean', text: proved('a') }, { path: 'PW/B.lean', text: proved('b') }] }));
+    expect(out.syn.status).toBe('failed');
+    expect(out.typ.status).toBe('failed');
+  });
+  it('calls a statement stated for a sorry in a helper lemma above its marker', () => {
+    const helper = 'import PW.Defs\n\ntheorem helper : True := by\n  sorry\n\n-- pw: a\ntheorem a : True := by\n  trivial\n';
+    const out = derive(input({ files: [{ path: 'PW/Defs.lean', text: DEFS }, { path: 'PW/A.lean', text: helper }, { path: 'PW/B.lean', text: proved('b') }] }));
+    expect(out.a.status).toBe('stated');
+    expect(out.b.status).toBe('proved');
+    expect(out.b.assumes).toEqual(['a']);
+  });
+  it('names an axiom in the definitions when it fails the statements', () => {
+    const out = derive(input({ files: [{ path: 'PW/Defs.lean', text: DEFS + '\naxiom cheat : False\n' }, { path: 'PW/A.lean', text: proved('a') }, { path: 'PW/B.lean', text: proved('b') }] }));
+    expect(out.a.status).toBe('failed');
+    expect(out.a.findings[0].message).toBe('Not checked: the definitions declare an axiom (cheat).');
+    expect(out.b.findings[0].message).toBe('Not checked: the definitions declare an axiom (cheat).');
+  });
+  it('names an axiom in a cited statement\'s file when it fails the citing statement', () => {
+    const files = [{ path: 'PW/Defs.lean', text: DEFS }, { path: 'PW/A.lean', text: proved('a') + 'axiom cheat : False\n' }, { path: 'PW/B.lean', text: proved('b') }];
+    const out = derive(input({ files }));
+    expect(out.b.findings[0].message).toBe('Not checked: a declares an axiom (cheat).');
+  });
+  it('keeps two identical errors at different lines', () => {
+    const out = derive(input({ diagnostics: [err('PW/Defs.lean', 6, 'same'), err('PW/Defs.lean', 8, 'same')] }));
+    expect(out.typ.findings.map((f) => f.lean?.line)).toEqual([6, 8]);
+  });
 });

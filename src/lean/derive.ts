@@ -40,13 +40,16 @@ function places(files: DeriveInput['files']): Map<Id, Place> {
 }
 
 const within = (p: Place, line: number) => p.regions.some(([a, b]) => line >= a && line <= b);
-const sameFinding = (a: Finding, b: Finding) => a.kind === b.kind && a.block === b.block && a.message === b.message;
+const sameFinding = (a: Finding, b: Finding) => a.kind === b.kind && a.block === b.block && a.message === b.message
+  && a.lean?.file === b.lean?.file && a.lean?.line === b.lean?.line;
 const push = (list: Finding[], f: Finding) => { if (!list.some((x) => sameFinding(x, f))) list.push(f); };
+const warnsSorry = (d: Diagnostic) => d.severity === 'warning' && /declaration uses 'sorry'/.test(d.message);
 
 export function derive(input: DeriveInput): Record<Id, MechBlock> {
   const { items, report, diagnostics, files, previous, target } = input;
   const where = places(files);
   const scans = new Map(files.map((f) => [f.path, scan(f.text)]));
+  const axiomIn = (file: string) => scans.get(file)?.axioms[0]?.name;
   const out: Record<Id, MechBlock> = {};
 
   for (const item of items) {
@@ -72,12 +75,24 @@ export function derive(input: DeriveInput): Record<Id, MechBlock> {
         failed = true;
         push(findings, { kind: 'stuck', block: item.id, message: `${p.file} declares an axiom (${a.name}); nothing may be assumed without proof.`, lean: { file: p.file, line: a.line } });
       }
+      // A definition must be complete. A `sorry` above the first marker of its file belongs to every definition there.
+      if (item.kind !== 'statement') {
+        const sorries = [
+          ...(scans.get(p.file)?.sorries ?? []),
+          ...diagnostics.filter((d) => d.file === p.file && warnsSorry(d)).map((d) => d.line),
+        ];
+        for (const line of sorries) {
+          if (!within(p, line) && line >= p.firstMarker) continue;
+          failed = true;
+          push(findings, { kind: 'stuck', block: item.id, message: 'This definition contains `sorry`; definitions must be complete.', lean: { file: p.file, line } });
+        }
+      }
     }
 
     let status: MechBlock['status'] = failed ? 'failed' : 'translated';
     if (!failed && item.kind === 'statement' && p) {
-      const hasSorry = (scans.get(p.file)?.sorries ?? []).some((l) => within(p, l))
-        || diagnostics.some((d) => d.file === p.file && d.severity === 'warning' && /declaration uses 'sorry'/.test(d.message) && within(p, d.line));
+      // A statement is only stated or proved by what its file holds: a helper lemma's `sorry` counts too.
+      const hasSorry = (scans.get(p.file)?.sorries.length ?? 0) > 0 || diagnostics.some((d) => d.file === p.file && warnsSorry(d));
       status = hasSorry ? 'stated' : 'proved';
     }
     out[item.id] = { kind: item.kind, hash: item.hash, file: reported?.file ?? p?.file ?? '', names: reported?.names ?? [], status, findings };
@@ -87,10 +102,13 @@ export function derive(input: DeriveInput): Record<Id, MechBlock> {
   // Lake builds nothing that imports a file that failed, so a statement's own
   // file being clean says nothing once something it rests on is broken.
   if (items.some((i) => i.kind !== 'statement' && out[i.id].status === 'failed')) {
+    const defFiles = [...new Set(items.filter((i) => i.kind !== 'statement').flatMap((i) => { const f = where.get(i.id)?.file; return f ? [f] : []; }))];
+    const defAxiom = defFiles.map(axiomIn).find((n): n is string => n !== undefined);
+    const why = defAxiom !== undefined ? `the definitions declare an axiom (${defAxiom}).` : 'the definitions do not compile.';
     for (const s of statements) {
       if (out[s.id].status === 'failed') continue;
       out[s.id].status = 'failed';
-      push(out[s.id].findings, { kind: 'stuck', block: s.id, message: 'Not checked: the definitions do not compile.' });
+      push(out[s.id].findings, { kind: 'stuck', block: s.id, message: `Not checked: ${why}` });
     }
   }
 
@@ -111,8 +129,10 @@ export function derive(input: DeriveInput): Record<Id, MechBlock> {
     const cited = [...reach(s.id)].filter((c) => c !== s.id);
     const broken = cited.find((c) => ownFailure.has(c));
     if (broken) {
+      const brokenFile = where.get(broken)?.file;
+      const ax = brokenFile !== undefined ? axiomIn(brokenFile) : undefined;
       b.status = 'failed';
-      push(b.findings, { kind: 'stuck', block: s.id, message: `Not checked: ${title.get(broken)} does not compile.` });
+      push(b.findings, { kind: 'stuck', block: s.id, message: ax !== undefined ? `Not checked: ${title.get(broken)} declares an axiom (${ax}).` : `Not checked: ${title.get(broken)} does not compile.` });
       continue;
     }
     if (b.status !== 'proved') continue;
