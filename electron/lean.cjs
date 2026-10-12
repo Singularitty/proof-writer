@@ -16,7 +16,11 @@ const WINDOWS = process.platform === 'win32';
 const KILL_GRACE_MS = 2000;
 // Only a file named like a Lean identifier can be imported; any other name
 // in PW/ would break the build of every module if PW.lean imported it.
-const MODULE_FILE = /^[A-Za-z_][A-Za-z0-9_']*\.lean$/;
+const MODULE_NAME = /^[A-Za-z_][A-Za-z0-9_']*$/;
+const isModuleName = (v) => typeof v === 'string' && MODULE_NAME.test(v);
+const isModuleFile = (n) => n.endsWith('.lean') && isModuleName(n.slice(0, -'.lean'.length));
+/** Says, by naming the document, that Proof Writer made the folder it is in. */
+const OWNER_FILE = '.proof-writer';
 
 const LAKEFILE = `name = "PW"
 version = "0.1.0"
@@ -83,12 +87,16 @@ function childEnv(tools, opts = {}) {
   return { ...(opts.env ?? process.env), PATH: [...new Set([...first, ...searchPath(opts)])].join(path.delimiter) };
 }
 
-/** The toolchain to pin: the one `lake` runs now, so the project keeps building after an update. */
+/**
+ * The toolchain to pin: the one `lake` runs now, so the project keeps building
+ * after an update. Only a release or a release candidate has a name of this
+ * form; a nightly or a local build is named otherwise, so `stable` stands in.
+ */
 function toolchain(lake, env) {
   return new Promise((resolve) => {
     execFile(lake, ['--version'], { env, shell: WINDOWS }, (err, stdout) => {
-      const m = err ? null : /Lean version ([0-9][^\s,)]*)/.exec(String(stdout));
-      resolve(`leanprover/lean4:${m ? 'v' + m[1] : 'stable'}`);
+      const m = err ? null : /Lean version ([^\s,)]+)/.exec(String(stdout));
+      resolve(`leanprover/lean4:${m && /^\d+\.\d+\.\d+(-rc\d+)?$/.test(m[1]) ? 'v' + m[1] : 'stable'}`);
     });
   });
 }
@@ -101,9 +109,39 @@ async function exists(file) {
   try { await fs.access(file); return true; } catch { return false; }
 }
 
+/**
+ * Refuses a folder that is in the Lean folder's place without being it: the
+ * app writes, builds and moves files to the trash there, which it must not do
+ * to a folder of the user's that happens to have the name. A folder is the
+ * document's if it is not there yet or is empty, if its owner file names the
+ * document, or if it has a status file and no owner file (made before owner
+ * files were written; it is then given one).
+ *
+ * An owner file naming another document refuses only when that document would
+ * share this folder (`stlc.json` and `stlc.proof.json` both have `stlc-lean`).
+ * Otherwise the user renamed the document and the folder together, which is
+ * how a mechanization is kept across a rename, and the owner file is brought
+ * up to date.
+ */
+async function assertOwned(dir, docPath) {
+  const name = path.basename(docPath);
+  const file = path.join(dir, OWNER_FILE);
+  const claim = () => fs.writeFile(file, name + '\n');
+  let entries;
+  try { entries = await fs.readdir(dir); } catch (e) { if (e.code === 'ENOENT') return; throw e; }
+  if (!entries.length) return;
+  let owner = null;
+  try { owner = (await fs.readFile(file, 'utf8')).trim(); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  if (owner === name) return;
+  if (owner === null ? entries.includes('mechanization.json') : path.basename(leanDir(owner)) !== path.basename(dir)) return claim();
+  throw new Error(`${dir} already exists and was not created by Proof Writer for this document.`);
+}
+
 /** Makes the Lean folder a Lake project, creating only what is not there. */
-async function ensureProject(dir, lake, env) {
+async function ensureProject(dir, lake, env, docPath) {
+  await assertOwned(dir, docPath);
   await fs.mkdir(path.join(dir, 'PW'), { recursive: true });
+  await writeIfMissing(path.join(dir, OWNER_FILE), path.basename(docPath) + '\n');
   await writeIfMissing(path.join(dir, 'lakefile.toml'), LAKEFILE);
   if (!(await exists(path.join(dir, 'lean-toolchain')))) await writeIfMissing(path.join(dir, 'lean-toolchain'), (await toolchain(lake, env)) + '\n');
   await writeIfMissing(path.join(dir, '.gitignore'), '.lake/\n');
@@ -115,15 +153,23 @@ async function leanFiles(dir) {
   let names = [];
   try { names = await fs.readdir(path.join(dir, 'PW')); } catch { /* no PW yet */ }
   return names
-    .filter((n) => MODULE_FILE.test(n))
+    .filter(isModuleFile)
     .sort((a, b) => (a === 'Defs.lean' ? -1 : b === 'Defs.lean' ? 1 : a.localeCompare(b)))
     .map((n) => `PW/${n}`);
 }
 
-/** Writes PW.lean to import every module there is, so a build covers them all. */
-async function writeRoot(dir) {
+/**
+ * Writes PW.lean, the root a build starts from, and returns the Lean files
+ * there are. For the app's own build it imports every module there is, so the
+ * build covers them all. For a job it is given the modules the document's
+ * statements need, and imports those and Defs: the files are not written yet,
+ * and the agent's own `lake build` should check what the app's will.
+ */
+async function writeRoot(dir, modules) {
   const files = await leanFiles(dir);
-  await fs.writeFile(path.join(dir, 'PW.lean'), files.map((f) => `import PW.${path.basename(f, '.lean')}\n`).join(''));
+  if (modules && !modules.every(isModuleName)) throw new Error('Not a Lean module name.');
+  const names = modules ? ['Defs', ...modules] : files.map((f) => path.basename(f, '.lean'));
+  await fs.writeFile(path.join(dir, 'PW.lean'), names.map((n) => `import PW.${n}\n`).join(''));
   return files;
 }
 
@@ -154,11 +200,48 @@ async function writeSnapshot(dir, { json, md }) {
   await fs.writeFile(path.join(dir, 'document.md'), md);
 }
 
+async function textOrNull(file) {
+  try { return await fs.readFile(file, 'utf8'); } catch { return null; }
+}
+
+/** What a job may change and what it may not, as they are now: every Lean file under PW/ and the user's conventions. */
+async function readSources(dir) {
+  let names = [];
+  try { names = await fs.readdir(path.join(dir, 'PW')); } catch { /* no PW yet */ }
+  const files = new Map();
+  for (const n of names.filter((x) => x.endsWith('.lean')).sort()) {
+    const text = await textOrNull(path.join(dir, 'PW', n));
+    if (text !== null) files.set(`PW/${n}`, text);
+  }
+  return { files, conventions: await textOrNull(path.join(dir, 'CONVENTIONS.md')) };
+}
+
+/**
+ * The Lean files under PW/ created, changed or deleted since `before` was
+ * read, as paths relative to the folder. CONVENTIONS.md is the user's: if it
+ * changed it is put back as it was, and listed too.
+ */
+async function touchedSince(dir, before) {
+  const now = await readSources(dir);
+  const touched = [...new Set([...before.files.keys(), ...now.files.keys()])].filter((p) => before.files.get(p) !== now.files.get(p)).sort();
+  if (now.conventions !== before.conventions) {
+    touched.push('CONVENTIONS.md');
+    const file = path.join(dir, 'CONVENTIONS.md');
+    try {
+      if (before.conventions === null) await fs.rm(file, { force: true });
+      else await fs.writeFile(file, before.conventions);
+    } catch { /* it is reported as changed either way */ }
+  }
+  return touched;
+}
+
 /**
  * The command line of a job. Restricted mode confines the file tools to the
  * Lean folder and ignores the user's settings and plugins; the allow list
- * lets Bash run Lake and nothing else; with nobody to answer a permission
- * prompt, anything else is refused.
+ * lets Bash run `lake build` and nothing else; with nobody to answer a
+ * permission prompt, anything else is refused. `lake env lean` is left out on
+ * purpose: `lean -o <path>` writes outside the folder and `lean --run` runs a
+ * program.
  */
 function claudeArgs({ model, effort, schema, instructions }) {
   if (model && !MODELS.includes(model)) throw new Error(`Unknown model: ${model}`);
@@ -168,7 +251,7 @@ function claudeArgs({ model, effort, schema, instructions }) {
     '--restricted', '--strict-mcp-config', '--no-session-persistence',
     '--permission-prompts', 'none',
     '--tools', 'Bash,Read,Edit,Write,Glob,Grep',
-    '--allowedTools', 'Bash(lake build)', 'Bash(lake build *)', 'Bash(lake env lean *)', 'Read', 'Edit', 'Write', 'Glob', 'Grep',
+    '--allowedTools', 'Bash(lake build)', 'Bash(lake build *)', 'Read', 'Edit', 'Write', 'Glob', 'Grep',
     ...(model ? ['--model', model] : []),
     ...(effort ? ['--effort', effort] : []),
     '--json-schema', JSON.stringify(schema),
@@ -198,15 +281,27 @@ function activity(event, dir) {
 }
 
 /**
- * Stops a program and what it started. Off Windows the program leads its own
- * process group (see `detached` where it is spawned), so the whole group gets
- * the signal; otherwise a `lean` started by `lake` would outlive it.
+ * Sends a signal to a program and what it started. Off Windows the program
+ * leads its own process group (see `detached` where it is spawned), so the
+ * whole group gets the signal; otherwise a `lean` started by `lake` would
+ * outlive it.
+ */
+function signal(child, name) {
+  if (!WINDOWS && child.pid) {
+    try { process.kill(-child.pid, name); return; } catch { /* fall back to the child alone */ }
+  }
+  try { child.kill(name); } catch { /* it has gone */ }
+}
+
+/**
+ * Stops a program and what it started: asks first, and after a short grace
+ * kills whatever of its group is left. The caller stops waiting after the
+ * same grace and goes on to build or to read the Lean files, which a process
+ * that ignored the request must not still be writing.
  */
 function stop(child) {
-  if (!WINDOWS && child.pid) {
-    try { process.kill(-child.pid, 'SIGTERM'); return; } catch { /* fall back to the child alone */ }
-  }
-  child.kill();
+  signal(child, 'SIGTERM');
+  setTimeout(() => signal(child, 'SIGKILL'), KILL_GRACE_MS);
 }
 
 /**
@@ -234,6 +329,7 @@ function runClaude({ claude, dir, prompt, args, env, onLine = () => {}, limitMs 
   // be late or never come: after the kill, give up waiting for it.
   const halt = () => {
     stop(child);
+    // set after `stop` set its own timer of the same length, so the kill comes first
     grace = setTimeout(() => settle('late'), KILL_GRACE_MS);
   };
   const timer = setTimeout(() => { timedOut = true; halt(); }, limitMs);
@@ -288,12 +384,17 @@ function runClaude({ claude, dir, prompt, args, env, onLine = () => {}, limitMs 
   return { done, cancel: () => { if (cancelled) return; cancelled = true; halt(); } };
 }
 
-/** Removes the Lean files whose module is neither Defs nor wanted; returns those it removed. */
+/**
+ * Removes the Lean files whose module is neither Defs nor wanted; returns
+ * those it removed. Names are compared without regard to case: on a file
+ * system that ignores it (macOS's default), a statement relabelled only in
+ * case still has its old file, which the agent reuses.
+ */
 async function removeStale(dir, keep, remove) {
   const removed = [];
+  const kept = new Set(['defs', ...keep.map((k) => k.toLowerCase())]);
   for (const p of await leanFiles(dir)) {
-    const name = path.basename(p, '.lean');
-    if (name === 'Defs' || keep.includes(name)) continue;
+    if (kept.has(path.basename(p, '.lean').toLowerCase())) continue;
     try { await remove(path.join(dir, p)); removed.push(p); } catch { /* leave it; the build does not depend on it */ }
   }
   return removed.sort();
@@ -302,15 +403,21 @@ async function removeStale(dir, keep, remove) {
 /**
  * Runs `lake build` and returns what it printed with the Lean files as they
  * now are. Given `keep` (module names), first removes the other modules the
- * document no longer has, except Defs.
+ * document no longer has, except Defs. The lakefile and PW.lean are the
+ * app's and are written afresh each time, so nothing done to them can make a
+ * build that builds less than every module. `onStart` is handed a function
+ * that stops the build. A build that was stopped, or ran past its limit, has
+ * `code: null` whatever Lake managed to exit with: it did not check everything.
  */
-async function runBuild({ dir, lake, env, limitMs = BUILD_LIMIT_MS, keep, remove = (p) => fs.rm(p) }) {
+async function runBuild({ dir, lake, env, limitMs = BUILD_LIMIT_MS, keep, remove = (p) => fs.rm(p), onStart = () => {} }) {
   const removed = keep ? await removeStale(dir, keep, remove) : [];
+  await fs.writeFile(path.join(dir, 'lakefile.toml'), LAKEFILE);
   const paths = await writeRoot(dir);
   const ran = await new Promise((resolve) => {
     let output = '';
     let settled = false;
     let grace = null;
+    let stopped = null;
     const child = spawn(lake, ['build'], { cwd: dir, env, shell: WINDOWS, detached: !WINDOWS });
     running.add(child);
     const finish = (value) => {
@@ -321,16 +428,23 @@ async function runBuild({ dir, lake, env, limitMs = BUILD_LIMIT_MS, keep, remove
       clearTimeout(grace);
       resolve(value);
     };
+    const cut = () => finish(stopped === 'cancelled'
+      ? { started: true, code: null, output, cancelled: true }
+      : { started: true, code: null, output: output + '\nStopped: the build ran past its time limit.' });
     // Lean processes Lake started may keep the pipes open after the kill, so
     // do not wait for `close` past a short grace.
-    const timer = setTimeout(() => {
+    const halt = (why) => {
+      if (stopped || settled) return;
+      stopped = why;
       stop(child);
-      grace = setTimeout(() => finish({ started: true, code: null, output }), KILL_GRACE_MS);
-    }, limitMs);
+      grace = setTimeout(cut, KILL_GRACE_MS);
+    };
+    const timer = setTimeout(() => halt('limit'), limitMs);
     child.stdout.on('data', (c) => { output += c; });
     child.stderr.on('data', (c) => { output += c; });
     child.on('error', (err) => finish({ started: false, code: null, output: err.message }));
-    child.on('close', (code) => finish({ started: true, code, output }));
+    child.on('close', (code) => { if (stopped) cut(); else finish({ started: true, code, output }); });
+    onStart(() => halt('cancelled'));
   });
   const files = [];
   for (const p of paths) files.push({ path: p, text: await fs.readFile(path.join(dir, p), 'utf8') });
@@ -351,6 +465,7 @@ async function writeStatus(dir, status) {
 }
 
 module.exports = {
-  MODELS, EFFORTS, leanDir, findTool, findTools, childEnv, ensureProject, recreateProject,
-  writeInstructions, writeSnapshot, claudeArgs, runClaude, runBuild, stopAll, readStatus, writeStatus,
+  MODELS, EFFORTS, leanDir, findTool, findTools, childEnv, isModuleName, assertOwned, ensureProject, recreateProject,
+  writeRoot, writeInstructions, writeSnapshot, readSources, touchedSince, claudeArgs, runClaude, runBuild, stopAll,
+  readStatus, writeStatus,
 };

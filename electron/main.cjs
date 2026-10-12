@@ -166,8 +166,30 @@ function leanFolder(e, docPath) {
   if (!docPath || watchers.get(e.sender.id)?.path !== docPath) throw new Error('That is not the document this window has open.');
   return lean.leanDir(docPath);
 }
-/** The job each window is running, if any. */
+/** What each window is running, if anything: a job, or the build that follows one. */
 const leanRuns = new Map();
+
+/**
+ * Runs `work` as the one thing this window is running. The slot is taken
+ * before anything is awaited, so a second request cannot slip in beside it,
+ * and is given back however `work` ends. Until `work` has started a program
+ * and set `slot.stop`, cancelling only marks the slot, which `work` checks. A
+ * window closed meanwhile takes what it was running with it.
+ */
+async function inLeanSlot(sender, work) {
+  const id = sender.id;
+  if (leanRuns.has(id)) throw new Error('A job is already running in this window.');
+  const slot = { cancelled: false, stop: null, cancel() { this.cancelled = true; this.stop?.(); } };
+  leanRuns.set(id, slot);
+  const onGone = () => slot.cancel();
+  sender.once('destroyed', onGone);
+  try {
+    return await work(slot);
+  } finally {
+    leanRuns.delete(id);
+    if (!sender.isDestroyed()) sender.removeListener('destroyed', onGone);
+  }
+}
 
 ipcMain.handle('lean-tools', () => lean.findTools());
 ipcMain.handle('lean-open', async (e, docPath) => {
@@ -176,58 +198,64 @@ ipcMain.handle('lean-open', async (e, docPath) => {
 });
 const isObject = (v) => typeof v === 'object' && v !== null;
 ipcMain.handle('lean-run', async (e, job) => {
+  // On Windows the programs are started through cmd.exe, which would be
+  // handed the instructions and the report's schema unquoted.
+  if (process.platform === 'win32') throw new Error('Mechanizing in Lean is not supported on Windows yet.');
   if (!isObject(job) || typeof job.prompt !== 'string' || !isObject(job.snapshot)
-    || typeof job.snapshot.json !== 'string' || typeof job.snapshot.md !== 'string' || !isObject(job.schema)) throw new Error('Malformed job.');
-  const { docPath, prompt, snapshot, schema, model, effort } = job;
+    || typeof job.snapshot.json !== 'string' || typeof job.snapshot.md !== 'string' || !isObject(job.schema)
+    || !Array.isArray(job.modules) || !job.modules.every(lean.isModuleName)) throw new Error('Malformed job.');
+  const { docPath, prompt, snapshot, schema, model, effort, modules } = job;
   const sender = e.sender;
-  const id = sender.id;
-  if (leanRuns.has(id)) throw new Error('A job is already running in this window.');
-  // The slot is taken before anything is awaited; until the job has started,
-  // cancelling only marks it, and `cancel` is then the run's own.
-  let cancelled = false;
-  const slot = { cancel: () => { cancelled = true; } };
-  leanRuns.set(id, slot);
-  // a window closed mid-job (or mid-preparation) takes its job with it
-  const onGone = () => slot.cancel();
-  sender.once('destroyed', onGone);
-  try {
+  return inLeanSlot(sender, async (slot) => {
     const dir = leanFolder(e, docPath);
     const tools = await lean.findTools();
     if (!tools.claude || !tools.lake) throw new Error('Claude Code or Lean was not found.');
     const env = lean.childEnv(tools);
     const args = lean.claudeArgs({ model, effort, schema, instructions: '' });
-    await lean.ensureProject(dir, tools.lake, env);
+    await lean.ensureProject(dir, tools.lake, env, docPath);
     await lean.writeSnapshot(dir, snapshot);
+    // so that the agent's own `lake build` covers every module the document needs
+    await lean.writeRoot(dir, modules);
     args[args.length - 1] = await lean.writeInstructions(dir);
-    if (cancelled) return { ok: false, report: null, cancelled: true, error: 'Cancelled.' };
+    const before = await lean.readSources(dir);
+    if (slot.cancelled) return { ok: false, report: null, cancelled: true, error: 'Cancelled.', touched: [] };
     const run = lean.runClaude({ claude: tools.claude, dir, prompt, args, env, onLine: (line) => { if (!sender.isDestroyed()) sender.send('lean-event', { line }); } });
-    slot.cancel = run.cancel;
-    return await run.done;
-  } finally {
-    leanRuns.delete(id);
-    if (!sender.isDestroyed()) sender.removeListener('destroyed', onGone);
-  }
+    slot.stop = run.cancel;
+    const ended = await run.done;
+    return { ...ended, touched: await lean.touchedSince(dir, before) };
+  });
 });
 ipcMain.handle('lean-cancel', (e) => { leanRuns.get(e.sender.id)?.cancel(); });
 // Lean files of statements the document no longer has go to the system's trash, where they can be recovered.
-ipcMain.handle('lean-build', async (e, { docPath, keep }) => {
-  const dir = leanFolder(e, docPath);
-  const tools = await lean.findTools();
-  if (!tools.lake) return { started: false, code: null, output: 'lake was not found.', files: [], removed: [] };
-  return lean.runBuild({
-    dir, lake: tools.lake, env: lean.childEnv(tools),
-    ...(Array.isArray(keep) && keep.every((k) => typeof k === 'string') ? { keep } : {}),
-    remove: (p) => shell.trashItem(p),
+ipcMain.handle('lean-build', async (e, payload) => {
+  if (!isObject(payload)) throw new Error('Malformed build request.');
+  const { docPath, keep } = payload;
+  // The build holds the window's slot as a job does, so Cancel stops it too.
+  return inLeanSlot(e.sender, async (slot) => {
+    const dir = leanFolder(e, docPath);
+    const tools = await lean.findTools();
+    if (!tools.lake) return { started: false, code: null, output: 'lake was not found.', files: [], removed: [] };
+    await lean.assertOwned(dir, docPath);
+    if (slot.cancelled) return { started: true, code: null, output: '', files: [], removed: [], cancelled: true };
+    return lean.runBuild({
+      dir, lake: tools.lake, env: lean.childEnv(tools),
+      ...(Array.isArray(keep) && keep.every((k) => typeof k === 'string') ? { keep } : {}),
+      remove: (p) => shell.trashItem(p),
+      onStart: (stop) => { slot.stop = stop; if (slot.cancelled) stop(); },
+    });
   });
 });
-ipcMain.handle('lean-write-status', (e, payload) => {
+ipcMain.handle('lean-write-status', async (e, payload) => {
   if (!isObject(payload) || !isObject(payload.status)) throw new Error('Malformed status.');
-  return lean.writeStatus(leanFolder(e, payload.docPath), payload.status);
+  const dir = leanFolder(e, payload.docPath);
+  await lean.assertOwned(dir, payload.docPath);
+  await lean.writeStatus(dir, payload.status);
 });
 ipcMain.handle('lean-recreate', async (e, docPath) => {
   const dir = leanFolder(e, docPath);
   const tools = await lean.findTools();
   if (!tools.lake) throw new Error('lake was not found.');
+  await lean.assertOwned(dir, docPath);
   await lean.recreateProject(dir, tools.lake, lean.childEnv(tools));
 });
 ipcMain.handle('lean-reveal', async (e, docPath) => { await shell.openPath(leanFolder(e, docPath)); });
