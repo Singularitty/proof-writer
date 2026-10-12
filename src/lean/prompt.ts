@@ -69,7 +69,8 @@ export const REPORT_SCHEMA = {
 const ids = (xs: Iterable<Id>) => [...xs].map((x) => '`' + x + '`').join(', ');
 const named = (i: Item) => `\`${i.id}\`${i.label ? ` (${i.label})` : i.title ? ` (${i.title})` : ''}`;
 
-export function syncPrompt(a: { items: Item[]; stale: Staleness; cites: Map<Id, Id[]>; first: boolean }): string {
+/** `files` says where each block's Lean text was last found, so a statement whose module name has changed can be moved. */
+export function syncPrompt(a: { items: Item[]; stale: Staleness; cites: Map<Id, Id[]>; first: boolean; files?: Record<Id, string> }): string {
   const byId = new Map(a.items.map((i) => [i.id, i]));
   const defs = a.items.filter((i) => i.kind !== 'statement');
   const statements = a.items.filter((i) => i.kind === 'statement');
@@ -88,7 +89,10 @@ export function syncPrompt(a: { items: Item[]; stale: Staleness; cites: Map<Id, 
   lines.push('', 'Statements, one file each, in this order:');
   for (const s of statements) {
     const imports = (a.cites.get(s.id) ?? []).map((c) => byId.get(c)?.module).filter(Boolean).map((m) => `PW.${m}`);
-    lines.push(`- ${named(s)}: PW/${s.module}.lean${imports.length ? `, also imports ${imports.join(', ')}` : ''}`);
+    const file = `PW/${s.module}.lean`;
+    const was = a.files?.[s.id];
+    const moved = was && was !== file ? ` (its Lean text is currently in ${was}; move it to the file named here)` : '';
+    lines.push(`- ${named(s)}: ${file}${moved}${imports.length ? `, also imports ${imports.join(', ')}` : ''}`);
   }
   if (!statements.length) lines.push('- (none)');
   lines.push('', 'State every statement and leave `sorry` as the proof of any that has no proof yet. Keep an existing proof where it still compiles. Do not attempt new proofs in this job.');

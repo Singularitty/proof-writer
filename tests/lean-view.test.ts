@@ -40,6 +40,13 @@ describe('the rows of the Lean tab', () => {
     expect(status(d, mech(d, { b: { status: 'stated' }, c: { status: 'failed' } }))).toEqual({ r: 'translated', a: 'proved', b: 'stated', c: 'failed' });
     expect(v.needsSync).toBe(false);
   });
+  it('need a sync when a definition failed, so a failed translation is tried again', () => {
+    const d = doc();
+    const v = leanView(d, mech(d, { r: { status: 'failed' } }));
+    expect(v.outOfDate).toBe(0);
+    expect(v.needsSync).toBe(true);
+    expect(leanView(d, mech(d, { a: { status: 'failed' } })).needsSync).toBe(false);
+  });
   it('offer Prove for a statement with a written proof that is not a conjecture', () => {
     const d = doc();
     expect(leanView(d, mech(d)).statements.map((r) => r.canProve)).toEqual([true, false, false]);

@@ -35,6 +35,7 @@ export interface LeanView {
   byId: Map<Id, LeanRow>;
   /** How many rows are untranslated or out of date. */
   outOfDate: number;
+  /** Whether a proof request has to sync first: something is out of date or gone, or a definition failed, which a sync may yet translate. */
   needsSync: boolean;
   /** Open proposals for blocks outside every definition and statement. */
   loose: LeanProposal[];
@@ -85,7 +86,7 @@ function build(doc: Doc, mech: Mechanization): LeanView {
     statements: rows.filter((r) => r.item.kind === 'statement'),
     byId: new Map(rows.map((r) => [r.id, r])),
     outOfDate,
-    needsSync: outOfDate > 0 || stale.deleted.length > 0,
+    needsSync: outOfDate > 0 || stale.deleted.length > 0 || rows.some((r) => r.item.kind !== 'statement' && r.status === 'failed'),
     loose: open.filter((p) => !own.has(p.block)),
   };
 }

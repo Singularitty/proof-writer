@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { markers, parseBuild, scan } from '../src/lean/build';
+import { declares, failedModules, imports, markers, parseBuild, scan } from '../src/lean/build';
 
 describe('reading lake build output', () => {
   it('reads diagnostics in the current format, with messages that run over lines', () => {
@@ -96,5 +96,64 @@ describe('scanning: literals, raw strings, axioms and sorryAx', () => {
   });
   it('flags sorryAx', () => {
     expect(scan('theorem u : P := sorryAx P false')).toEqual({ sorries: [1], axioms: [] });
+  });
+});
+
+describe('the modules Lake reports as failed', () => {
+  it('reads the failed build lines and the closing list', () => {
+    const out = [
+      '✔ [1/5] Built PW.Defs',
+      '✖ [2/5] Building PW.LemA',
+      'error: bad import \'PW.Nope\'',
+      '⚠ [3/5] Built PW.LemB',
+      'Some required builds logged failures:',
+      '- PW.LemA',
+      '- PW.ThmC',
+      'error: build failed',
+    ].join('\n');
+    expect(failedModules(out)).toEqual(['LemA', 'ThmC']);
+  });
+  it('reads a failed line without its symbol, and leaves out the root module and other packages', () => {
+    expect(failedModules(['[2/5] Building PW.LemA', '✖ [5/5] Building PW', '✖ [1/5] Building Std.Data'].join('\r\n'))).toEqual(['LemA']);
+  });
+  it('finds none in a clean build', () => {
+    expect(failedModules('✔ [1/2] Built PW.Defs\n✔ [2/2] Built PW\nBuild completed successfully.\n')).toEqual([]);
+  });
+});
+
+describe('the modules a file imports', () => {
+  it('reads the PW imports, in any of the forms an import line takes', () => {
+    const text = ['import PW.Defs', 'public import PW.LemA', 'import all PW.LemB import PW.Sub.Deep', 'import Init.Data', '', 'theorem t : True := trivial'].join('\n');
+    expect(imports(text)).toEqual(['Defs', 'LemA', 'LemB', 'Sub.Deep']);
+  });
+  it('ignores an import in a comment or a string, and names each module once', () => {
+    expect(imports(['-- import PW.Nope', '/- import PW.Nor -/', 'import PW.Defs', 'import PW.Defs', 'def s := "import PW.Str"'].join('\n'))).toEqual(['Defs']);
+  });
+});
+
+describe('markers and block comments', () => {
+  it('does not take a marker inside a block comment for a marker', () => {
+    const text = ['/-', '-- pw: hidden', '  /- nested -/', '-- pw: also', '-/', '-- pw: real', 'theorem t : True := trivial', 'def s := "/-"', '-- pw: after'].join('\n');
+    expect(markers(text)).toEqual([{ line: 6, block: 'real' }, { line: 9, block: 'after' }]);
+  });
+});
+
+describe('declarations', () => {
+  it('finds a declaration keyword in the given lines of code only', () => {
+    const text = ['-- pw: a', '-- theorem in a comment', 'def s := "theorem"', '-- pw: b', '@[simp] private theorem t : True := trivial', 'lemma l : True := trivial'].join('\n');
+    expect(declares(text, [[1, 3]], 'statement')).toBe(false);
+    expect(declares(text, [[1, 3]], 'definition')).toBe(true);
+    expect(declares(text, [[4, Infinity]], 'statement')).toBe(true);
+    expect(declares('-- pw: a\n-- nothing here\nmy_theorem_like x', [[1, Infinity]], 'statement')).toBe(false);
+    for (const k of ['def', 'abbrev', 'inductive', 'structure', 'class', 'instance', 'opaque', 'example']) expect(declares(`${k} x`, [[1, 1]], 'definition')).toBe(true);
+  });
+});
+
+describe('scanning: qualified sorryAx and native_decide', () => {
+  it('flags sorryAx however it is qualified', () => {
+    expect(scan(['theorem u : P := Lean.sorryAx P', 'theorem v : P := _root_.sorryAx P false'].join('\n')).sorries).toEqual([1, 2]);
+  });
+  it('flags native_decide like a sorry', () => {
+    expect(scan(['theorem u : 1 = 1 := by', '  native_decide', '-- native_decide', 'def native_decide_free := 1'].join('\n')).sorries).toEqual([2]);
   });
 });

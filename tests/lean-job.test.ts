@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { performJob, proveWithSync, type JobDeps } from '../src/lean/job';
 import { REPORT_SCHEMA } from '../src/lean/prompt';
-import { emptyMechanization } from '../src/lean/status';
+import { emptyMechanization, type Mechanization } from '../src/lean/status';
+import { leanView } from '../src/lean/view';
 import type { LeanBridge, LeanBuildResult, LeanRunResult } from '../src/util/desktop';
 import type { Doc } from '../src/model/types';
 
@@ -135,7 +136,7 @@ describe('a proof', () => {
     const f = fake([ok(), ok({ outcome: 'done', summary: 'Proved B.' })], [built(STATED), built(B_PROVED)]);
     const phases: string[] = [];
     const r = await proveWithSync(deps(f.bridge, { onPhase: (k) => phases.push(k) }), 'b');
-    expect(f.calls).toEqual(['run', 'build', 'write', 'run', 'build', 'write']);
+    expect(f.calls).toEqual(['run', 'build', 'write', 'write', 'run', 'build', 'write']);
     expect(phases).toEqual(['sync', 'prove']);
     expect(f.jobs[1].prompt).toMatch(/^Job: prove/);
     expect(f.jobs[1].prompt).toContain('PW/ThmB.lean');
@@ -147,7 +148,7 @@ describe('a proof', () => {
     const synced = (await performJob(deps(fake([ok()], [built(STATED)]).bridge), 'sync')).mech;
     const f = fake([ok()], [built(B_PROVED)]);
     await proveWithSync(deps(f.bridge, { mech: synced }), 'b');
-    expect(f.calls).toEqual(['run', 'build', 'write']);
+    expect(f.calls).toEqual(['write', 'run', 'build', 'write']);
     expect(f.jobs[0].prompt).toMatch(/^Job: prove/);
   });
   it('is not attempted when the sync leaves the statement failed', async () => {
@@ -178,5 +179,181 @@ describe('proposals after a proof', () => {
     const f = fake([ok()], [built(B_PROVED)]);
     const r = await performJob(deps(f.bridge, { mech: { ...synced, proposals: old } }), 'prove', 'b');
     expect(r.mech.proposals.map((p) => [p.id, p.state])).toEqual([['o2', 'open'], ['o3', 'dismissed']]);
+  });
+});
+
+const statusOf = (m: Mechanization) => Object.fromEntries(Object.entries(m.blocks).map(([id, b]) => [id, b.status]));
+const PROVED = [DEFS, file('LemA', 'a', 'trivial'), file('ThmB', 'b', 'trivial')];
+const failedRun = (error: string, cancelled = false): LeanRunResult => ({ ok: false, report: null, cancelled, error });
+/** The document with its rule edited after everything was translated. */
+const editedDoc = (): Doc => ({ ...doc, blocks: [{ id: 'r', type: 'rules', title: 'Typing', rules: [{ id: 'r1', name: 'T-True', premises: [], conclusion: 'changed' }] }, ...doc.blocks.slice(1)] });
+
+describe('a sync that did not finish', () => {
+  it('leaves edited blocks out of date, however clean the old files build', async () => {
+    const proved = (await performJob(deps(fake([ok()], [built(PROVED)]).bridge), 'sync')).mech;
+    expect(statusOf(proved)).toEqual({ r: 'translated', a: 'proved', b: 'proved' });
+    const edited = editedDoc();
+    for (const run of [failedRun('Cancelled.', true), failedRun('Not logged in'), ok('not a report')]) {
+      const r = await performJob(deps(fake([run], [built(PROVED)]).bridge, { doc: edited, mech: proved }), 'sync');
+      const view = leanView(edited, r.mech);
+      expect([...view.byId.values()].map((row) => row.status)).toEqual(['stale', 'stale', 'stale']);
+      expect(view.needsSync).toBe(true);
+    }
+  });
+  it('records the edit once a sync has finished', async () => {
+    const proved = (await performJob(deps(fake([ok()], [built(PROVED)]).bridge), 'sync')).mech;
+    const edited = editedDoc();
+    const r = await performJob(deps(fake([ok()], [built(PROVED)]).bridge, { doc: edited, mech: proved }), 'sync');
+    const view = leanView(edited, r.mech);
+    expect([...view.byId.values()].map((row) => row.status)).toEqual(['translated', 'proved', 'proved']);
+    expect(view.needsSync).toBe(false);
+  });
+  it('does not clear away Lean files: the build is asked to keep everything', async () => {
+    const synced = (await performJob(deps(fake([ok()], [built(STATED)]).bridge), 'sync')).mech;
+    const relabelled: Doc = { ...doc, blocks: doc.blocks.map((b) => (b.id === 'a' && b.type === 'theorem' ? { ...b, label: 'lem:renamed' } : b)) };
+    for (const run of [failedRun('Not logged in'), failedRun('Cancelled.', true), ok('not a report')]) {
+      const f = fake([run], [built(STATED)]);
+      await performJob(deps(f.bridge, { doc: relabelled, mech: synced }), 'sync');
+      expect(f.keeps).toEqual([undefined]);
+    }
+    const f = fake([ok()], [built(STATED)]);
+    await performJob(deps(f.bridge, { doc: relabelled, mech: synced }), 'sync');
+    expect(f.keeps).toEqual([['LemRenamed', 'ThmB']]);
+  });
+});
+
+describe('a build that says less than it seems to', () => {
+  it('writes nothing when the build was killed or timed out, whatever the files look like', async () => {
+    const f = fake([ok()], [{ started: true, code: null, output: "warning: ././././PW/LemA.lean:5:2: declaration uses 'sorry'\n", files: B_PROVED, removed: [] }]);
+    const r = await performJob(deps(f.bridge), 'sync');
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/^lake build could not run/) });
+    expect(r.mech).toEqual(emptyMechanization());
+    expect(f.calls).toEqual(['run', 'build']);
+  });
+  it('writes nothing when the build was killed with a Lean error already printed', async () => {
+    const f = fake([ok()], [{ started: true, code: null, output: 'error: ././././PW/LemA.lean:5:2: unsolved goals\n', files: B_PROVED, removed: [] }]);
+    const r = await performJob(deps(f.bridge), 'sync');
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/^lake build could not run/) });
+    expect(f.calls).toEqual(['run', 'build']);
+  });
+  it('says a cancelled build was cancelled', async () => {
+    const f = fake([ok()], [{ started: true, code: null, output: '', files: B_PROVED, removed: [], cancelled: true }]);
+    const r = await performJob(deps(f.bridge), 'sync');
+    expect(r).toMatchObject({ ok: false, error: 'lake build could not run: it was cancelled.' });
+    expect(f.calls).toEqual(['run', 'build']);
+  });
+  it('fails a statement whose module Lake reports as failed with no positioned error', async () => {
+    const output = ['✔ [1/4] Built PW.Defs', '✖ [2/4] Building PW.LemA', "error: bad import 'PW.Nope'", 'Some required builds logged failures:', '- PW.LemA', 'error: build failed'].join('\n');
+    const r = await performJob(deps(fake([ok()], [built(PROVED, output)]).bridge), 'sync');
+    expect(statusOf(r.mech)).toEqual({ r: 'translated', a: 'failed', b: 'failed' });
+    expect(r.mech.blocks.a.findings).toEqual([{ kind: 'stuck', block: 'a', message: 'Lake reports that PW.LemA failed to build.' }]);
+  });
+  it('does not read a failed-looking line of a build that succeeded as a failure', async () => {
+    // Lake before 4.9 printed "Building" for every module.
+    const r = await performJob(deps(fake([ok()], [{ ...built(PROVED), output: '[1/3] Building PW.Defs\n[2/3] Building PW.LemA\n' }]).bridge), 'sync');
+    expect(statusOf(r.mech)).toEqual({ r: 'translated', a: 'proved', b: 'proved' });
+  });
+  it('writes nothing when the only Lean error is in a file that is not the project’s', async () => {
+    const f = fake([ok()], [built(PROVED, 'error: ././././lakefile.lean:3:0: unknown constant')]);
+    const r = await performJob(deps(f.bridge), 'sync');
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/^lake build could not run/) });
+    expect(f.calls).toEqual(['run', 'build']);
+  });
+});
+
+describe('what a job is given', () => {
+  it('names the statements’ modules, for a sync and for a proof', async () => {
+    const f = fake([ok()], [built(STATED)]);
+    const synced = await performJob(deps(f.bridge), 'sync');
+    await performJob(deps(f.bridge, { mech: synced.mech }), 'prove', 'b');
+    expect(f.jobs.map((j) => j.modules)).toEqual([['LemA', 'ThmB'], ['LemA', 'ThmB']]);
+  });
+  it('tells a sync where a relabelled statement’s Lean text is now', async () => {
+    const synced = (await performJob(deps(fake([ok()], [built(STATED)]).bridge), 'sync')).mech;
+    const relabelled: Doc = { ...doc, blocks: doc.blocks.map((b) => (b.id === 'a' && b.type === 'theorem' ? { ...b, label: 'lem:renamed' } : b)) };
+    const f = fake([ok()], [built(STATED)]);
+    await performJob(deps(f.bridge, { doc: relabelled, mech: synced }), 'sync');
+    expect(f.jobs[0].prompt).toContain('PW/LemRenamed.lean (its Lean text is currently in PW/LemA.lean; move it to the file named here)');
+    expect(f.jobs[0].prompt).not.toContain('PW/ThmB.lean (its Lean text');
+  });
+});
+
+describe('a prove job and the record', () => {
+  const provedB = async () => (await performJob(deps(fake([ok()], [built(B_PROVED)]).bridge), 'sync')).mech;
+  it('records its target as not proved before it starts', async () => {
+    const mech = await provedB();
+    expect(mech.blocks.b).toMatchObject({ status: 'proved', assumes: ['a'], proofHash: expect.any(String) });
+    const f = fake([ok()], [built(B_PROVED)]);
+    await performJob(deps(f.bridge, { mech }), 'prove', 'b');
+    expect(f.calls).toEqual(['write', 'run', 'build', 'write']);
+    const first = f.written[0] as Mechanization;
+    expect(first.blocks.b.status).toBe('stated');
+    expect(first.blocks.b).not.toHaveProperty('proofHash');
+    expect(first.blocks.b).not.toHaveProperty('assumes');
+    expect(first.blocks.a).toEqual(mech.blocks.a);
+    expect(first.lastJob).toEqual(mech.lastJob);
+  });
+  it('leaves that record standing when the build cannot run', async () => {
+    const mech = await provedB();
+    const f = fake([ok()], [{ started: true, code: null, output: '', files: B_PROVED, removed: [] }]);
+    const r = await performJob(deps(f.bridge, { mech }), 'prove', 'b');
+    expect(f.calls).toEqual(['write', 'run', 'build']);
+    expect(r.ok).toBe(false);
+    expect(r.mech).toEqual(f.written[0]);
+    expect(r.mech.blocks.b.status).toBe('stated');
+  });
+  it('returns that record when the main process refuses the job or the build', async () => {
+    const mech = await provedB();
+    const refusing = fake([ok()], [built(B_PROVED)]);
+    refusing.bridge.run = async () => { throw new Error("Error invoking remote method 'lean-run': Error: Claude Code or Lean was not found."); };
+    const r = await performJob(deps(refusing.bridge, { mech }), 'prove', 'b');
+    expect(r).toMatchObject({ ok: false, error: 'Claude Code or Lean was not found.' });
+    expect(r.mech).toEqual(refusing.written[0]);
+    const noBuild = fake([ok()], [built(B_PROVED)]);
+    noBuild.bridge.build = async () => { throw new Error('That is not the document this window has open.'); };
+    const b = await performJob(deps(noBuild.bridge, { mech }), 'prove', 'b');
+    expect(b).toMatchObject({ ok: false, error: 'That is not the document this window has open.' });
+    expect(b.mech.blocks.b.status).toBe('stated');
+  });
+  it('does not call a failed target stated', async () => {
+    const mech = await provedB();
+    const failed: Mechanization = { ...mech, blocks: { ...mech.blocks, b: { ...mech.blocks.b, status: 'failed' } } };
+    const f = fake([ok()], [{ started: false, code: null, output: 'x', files: [], removed: [] }]);
+    await performJob(deps(f.bridge, { mech: failed }), 'prove', 'b');
+    expect((f.written[0] as Mechanization).blocks.b.status).toBe('failed');
+  });
+  it('never moves a block’s recorded hash', async () => {
+    const mech = await provedB();
+    const r = await performJob(deps(fake([ok()], [built(B_PROVED)]).bridge, { doc: editedDoc(), mech }), 'prove', 'b');
+    expect(r.mech.blocks.r.hash).toBe(mech.blocks.r.hash);
+  });
+  it('keeps a recorded deviation on the statement it proves', async () => {
+    const deviation = { kind: 'deviation', block: 'b', message: 'Adds that the context is well formed.' };
+    const synced = (await performJob(deps(fake([ok({ outcome: 'done', summary: '', findings: [deviation] })], [built(STATED)]).bridge), 'sync')).mech;
+    const r = await performJob(deps(fake([ok()], [built(B_PROVED)]).bridge, { mech: synced }), 'prove', 'b');
+    expect(r.mech.blocks.b.status).toBe('proved');
+    expect(r.mech.blocks.b.findings).toEqual([deviation]);
+  });
+  it('says so when the job changed files other than its own', async () => {
+    const mech = await provedB();
+    const run = { ...ok(), touched: ['PW/ThmB.lean', 'PW/Defs.lean', 'CONVENTIONS.md'] };
+    const r = await performJob(deps(fake([run], [built(B_PROVED)]).bridge, { mech }), 'prove', 'b');
+    expect(r.mech.blocks.b.status).toBe('proved');
+    expect(r.mech.blocks.b.findings).toEqual([{ kind: 'stuck', block: 'b', message: 'The proof job also changed PW/Defs.lean, CONVENTIONS.md, which it may not.' }]);
+    const own = await performJob(deps(fake([{ ...ok(), touched: ['PW/ThmB.lean'] }], [built(B_PROVED)]).bridge, { mech }), 'prove', 'b');
+    expect(own.mech.blocks.b.findings).toEqual([]);
+    const sync = await performJob(deps(fake([run], [built(B_PROVED)]).bridge, { mech }), 'sync');
+    expect(sync.mech.blocks.b.findings).toEqual([]);
+  });
+});
+
+describe('findings that name other blocks', () => {
+  it('reach the statement that owns a related block inside a proof', async () => {
+    const report = { outcome: 'partial', summary: '', findings: [{ kind: 'inconsistency', block: 'r', related: ['ta', 'tb', 'r', 'nowhere'], message: 'The rule and the proofs disagree.' }] };
+    const r = await performJob(deps(fake([ok(report)], [built(STATED)]).bridge), 'sync');
+    const finding = { kind: 'inconsistency', block: 'r', related: ['a', 'b'], message: 'The rule and the proofs disagree.' };
+    expect(r.mech.blocks.r.findings).toEqual([finding]);
+    expect(r.mech.blocks.a.findings).toEqual([finding]);
+    expect(r.mech.blocks.b.findings).toEqual([finding]);
   });
 });

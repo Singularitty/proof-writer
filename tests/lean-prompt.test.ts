@@ -59,6 +59,12 @@ describe('the job prompts', () => {
     expect(p).toMatch(/New.*`g`/);
     expect(p).toMatch(/Deleted.*`gone`/);
   });
+  it('says where a statement’s Lean text is when that is not its file', () => {
+    const p = syncPrompt({ items, stale: staleness(items, {}), cites, first: false, files: { a: 'PW/LemOld.lean', b: 'PW/ThmProgress.lean', r: 'PW/Defs.lean' } });
+    expect(p).toContain('- `a` (lem:canonical): PW/LemCanonical.lean (its Lean text is currently in PW/LemOld.lean; move it to the file named here)');
+    expect(p).not.toContain('PW/ThmProgress.lean (its Lean text');
+    expect(syncPrompt({ items, stale: staleness(items, {}), cites, first: false, files: { a: '' } })).not.toContain('its Lean text');
+  });
   it('asks for one proof and says what may be cited', () => {
     const p = provePrompt({ item: items.find((i) => i.id === 'b')!, cited: [items.find((i) => i.id === 'a')!] });
     expect(p).toContain('`b`');

@@ -15,7 +15,7 @@ function input(over: Partial<DeriveInput> = {}): DeriveInput {
   return {
     items: [def('syn'), def('typ'), st('a'), st('b')],
     cites: new Map([['a', []], ['b', ['a']]]),
-    report: null, diagnostics: [], previous: {},
+    report: null, diagnostics: [], failed: [], previous: {}, trusted: true,
     files: [{ path: 'PW/Defs.lean', text: DEFS }, { path: 'PW/A.lean', text: proved('a') }, { path: 'PW/B.lean', text: proved('b') }],
     ...over,
   };
@@ -99,7 +99,7 @@ describe('deriving statuses', () => {
     const out = derive(input({ previous, target: 'b' }));
     expect(out.a.findings).toEqual([{ kind: 'deviation', block: 'a', message: 'extra hypothesis' }]);
     const afterSync = derive(input({ previous }));
-    expect(afterSync.a.findings).toEqual([]);
+    expect(afterSync.a.findings).toEqual([{ kind: 'deviation', block: 'a', message: 'extra hypothesis' }]);
   });
   it('records the proof hash of the job that proved it', () => {
     const previous = derive(input());
@@ -142,5 +142,174 @@ describe('deriving statuses', () => {
   it('keeps two identical errors at different lines', () => {
     const out = derive(input({ diagnostics: [err('PW/Defs.lean', 6, 'same'), err('PW/Defs.lean', 8, 'same')] }));
     expect(out.typ.findings.map((f) => f.lean?.line)).toEqual([6, 8]);
+  });
+});
+
+const FILES = (a: string, b: string, more: DeriveInput['files'] = []) => [{ path: 'PW/Defs.lean', text: DEFS }, { path: 'PW/A.lean', text: a }, { path: 'PW/B.lean', text: b }, ...more];
+const report = (findings: NonNullable<DeriveInput['report']>['findings']) => ({ outcome: 'done' as const, summary: '', blocks: [], proposals: [], changes: [], findings });
+const messages = (b: { findings: { message: string }[] }) => b.findings.map((f) => f.message);
+
+describe('the hashes a job records', () => {
+  const edited = [def('syn'), { ...def('typ'), hash: 'h-typ2' }, st('a'), st('b')];
+  it('keeps the recorded hash of an edited block when the sync cannot be trusted', () => {
+    const previous = derive(input());
+    const out = derive(input({ previous, items: edited, trusted: false }));
+    expect(out.typ.hash).toBe('h-typ');
+    expect(out.a.hash).toBe('h-a');
+  });
+  it('records the new hash after a sync that can be trusted', () => {
+    const previous = derive(input());
+    expect(derive(input({ previous, items: edited })).typ.hash).toBe('h-typ2');
+  });
+  it('never changes a recorded hash in a prove job, trusted or not', () => {
+    const previous = derive(input());
+    expect(derive(input({ previous, items: edited, target: 'b' })).typ.hash).toBe('h-typ');
+  });
+  it('gives a block with no record the hash it has now', () => {
+    expect(derive(input({ trusted: false })).typ.hash).toBe('h-typ');
+    expect(derive(input({ trusted: false, target: 'b' })).a.hash).toBe('h-a');
+  });
+  it('keeps the record of a deleted block unless a trusted sync ran', () => {
+    const previous = derive(input());
+    const fewer = [def('syn'), st('a'), st('b')];
+    expect(derive(input({ previous, items: fewer, trusted: false })).typ).toEqual(previous.typ);
+    expect(derive(input({ previous, items: fewer, target: 'b' })).typ).toEqual(previous.typ);
+    expect(derive(input({ previous, items: fewer })).typ).toBeUndefined();
+  });
+});
+
+describe('what a statement depends on', () => {
+  // b imports a without its written proof citing it
+  const uncited = new Map<string, string[]>([['a', []], ['b', []]]);
+  const importsA = (id: string) => `import PW.Defs\nimport PW.A\n\n-- pw: ${id}\ntheorem ${id} : True := by\n  trivial\n`;
+  it('calls a proof that imports an unproved statement proved assuming it', () => {
+    const out = derive(input({ cites: uncited, files: FILES(stated('a'), importsA('b')) }));
+    expect(out.b.status).toBe('proved');
+    expect(out.b.assumes).toEqual(['a']);
+  });
+  it('fails a statement importing one whose file declares an axiom, naming it', () => {
+    const out = derive(input({ cites: uncited, files: FILES(proved('a') + 'axiom cheat : False\n', importsA('b')) }));
+    expect(out.b.status).toBe('failed');
+    expect(messages(out.b)).toEqual(['Not checked: a declares an axiom (cheat).']);
+  });
+  it('fails a statement importing one that does not compile', () => {
+    const out = derive(input({ cites: uncited, files: FILES(proved('a'), importsA('b')), diagnostics: [err('PW/A.lean', 5)] }));
+    expect(out.b.status).toBe('failed');
+    expect(messages(out.b)).toEqual(['Not checked: a does not compile.']);
+  });
+  it('follows imports through other statements', () => {
+    const items = [def('syn'), def('typ'), st('a'), st('b'), st('c')];
+    const cites = new Map<string, string[]>([['a', []], ['b', []], ['c', []]]);
+    const importsB = 'import PW.B\n\n-- pw: c\ntheorem c : True := by\n  trivial\n';
+    const out = derive(input({ items, cites, files: FILES(stated('a'), importsA('b'), [{ path: 'PW/C.lean', text: importsB }]) }));
+    expect(out.c.status).toBe('proved');
+    expect(out.c.assumes).toEqual(['a']);
+  });
+  it('fails a statement importing a module that is not there', () => {
+    const text = 'import PW.Defs\nimport PW.Missing\n\n-- pw: b\ntheorem b : True := by\n  trivial\n';
+    const out = derive(input({ files: FILES(proved('a'), text) }));
+    expect(out.b.status).toBe('failed');
+    expect(messages(out.b)).toEqual(['PW/B.lean imports PW.Missing, which is not in the project.']);
+    expect(out.a.status).toBe('proved');
+  });
+  it('fails a statement importing a file of no block that holds a sorry, an axiom or an error', () => {
+    const imp = 'import PW.Defs\nimport PW.Extra\n\n-- pw: b\ntheorem b : True := by\n  trivial\n';
+    const extra = (text: string) => FILES(proved('a'), imp, [{ path: 'PW/Extra.lean', text }]);
+    expect(messages(derive(input({ files: extra('theorem h : True := by sorry\n') })).b)).toEqual(['Not checked: PW/Extra.lean, which it relies on, holds a `sorry`.']);
+    expect(messages(derive(input({ files: extra('axiom cheat : False\n') })).b)).toEqual(['Not checked: PW/Extra.lean, which it relies on, declares an axiom (cheat).']);
+    expect(messages(derive(input({ files: extra('theorem h : True := trivial\n'), diagnostics: [err('PW/Extra.lean', 1)] })).b)).toEqual(['Not checked: PW/Extra.lean, which it relies on, does not compile.']);
+    expect(derive(input({ files: extra('theorem h : True := trivial\n') })).b.status).toBe('proved');
+  });
+});
+
+describe('modules Lake reports as failed', () => {
+  it('fails a block whose module failed with no positioned diagnostic, and what rests on it', () => {
+    const out = derive(input({ failed: ['A'] }));
+    expect(out.a.status).toBe('failed');
+    expect(out.a.findings).toEqual([{ kind: 'stuck', block: 'a', message: 'Lake reports that PW.A failed to build.' }]);
+    expect(out.b.status).toBe('failed');
+    expect(messages(out.b)).toEqual(['Not checked: a does not compile.']);
+  });
+  it('fails every definition and statement when the definitions module failed', () => {
+    const out = derive(input({ failed: ['Defs'] }));
+    expect(statuses(input({ failed: ['Defs'] }))).toEqual({ syn: 'failed', typ: 'failed', a: 'failed', b: 'failed' });
+    expect(messages(out.typ)).toEqual(['Lake reports that PW.Defs failed to build.']);
+  });
+});
+
+describe('where a block is', () => {
+  it('counts a statement only in its own file, and says where else a marker for it is', () => {
+    const out = derive(input({ files: FILES(proved('a'), stated('b'), [{ path: 'PW/Aaa.lean', text: '-- pw: b\n' }]) }));
+    expect(out.b.status).toBe('stated');
+    expect(out.b.file).toBe('PW/B.lean');
+    expect(out.b.findings).toEqual([{ kind: 'stuck', block: 'b', message: 'A marker for this block is also in PW/Aaa.lean; it is ignored.' }]);
+  });
+  it('does not take a clean file elsewhere for a statement whose own file is missing', () => {
+    const out = derive(input({ files: [{ path: 'PW/Defs.lean', text: DEFS }, { path: 'PW/A.lean', text: proved('a') }, { path: 'PW/Aaa.lean', text: proved('b') }] }));
+    expect(out.b.status).toBe('failed');
+    expect(messages(out.b)).toEqual(['A marker for this block is also in PW/Aaa.lean; it is ignored.', 'No Lean declaration was written for this block.']);
+  });
+  it('counts a definition only in PW/Defs.lean', () => {
+    const out = derive(input({ items: [def('syn'), def('typ'), def('extra'), st('a')], files: FILES(proved('a') + '\n-- pw: extra\ndef extra := 1\n', proved('b')) }));
+    expect(out.extra.status).toBe('failed');
+    expect(out.a.status).toBe('failed');
+  });
+  it('fails a block whose marker has only a comment under it', () => {
+    const out = derive(input({ files: FILES(proved('a'), 'import PW.Defs\n\n-- pw: b\n-- theorem b : True := trivial\n') }));
+    expect(out.b.status).toBe('failed');
+    expect(messages(out.b)).toEqual(['No Lean declaration was written for this block.']);
+    expect(out.b.file).toBe('PW/B.lean');
+  });
+  it('fails a statement whose marker sits over a definition and no theorem', () => {
+    const out = derive(input({ files: FILES(proved('a'), 'import PW.Defs\n\n-- pw: b\ndef b := 1\n') }));
+    expect(out.b.status).toBe('failed');
+  });
+  it('does not take a marker inside a block comment for a declaration', () => {
+    const out = derive(input({ files: FILES(proved('a'), 'import PW.Defs\n\n/-\n-- pw: b\ntheorem b : True := trivial\n-/\n') }));
+    expect(out.b.status).toBe('failed');
+    expect(messages(out.b)).toEqual(['No Lean declaration was written for this block.']);
+  });
+  it('gives a statement every error of its file, whatever other markers the file holds', () => {
+    const text = proved('b') + '\n-- pw: zzz\ntheorem broken : False := by\n  trivial\n';
+    const out = derive(input({ files: FILES(proved('a'), text), diagnostics: [err('PW/B.lean', 9)] }));
+    expect(out.b.status).toBe('failed');
+  });
+  it('gives an error under a marker of no definition in PW/Defs.lean to the definition above it', () => {
+    const text = DEFS + '\n-- pw: zzz\ndef broken : Nat := "x"\n';
+    const out = derive(input({ files: [{ path: 'PW/Defs.lean', text }, { path: 'PW/A.lean', text: proved('a') }, { path: 'PW/B.lean', text: proved('b') }], diagnostics: [err('PW/Defs.lean', 10)] }));
+    expect(out.typ.status).toBe('failed');
+    expect(out.a.status).toBe('failed');
+  });
+  it('shows the file a block is in, not the one the report names', () => {
+    const r = { ...report([]), blocks: [{ block: 'a', file: 'PW/Elsewhere.lean', names: ['a'] }] };
+    const out = derive(input({ report: r }));
+    expect(out.a.file).toBe('PW/A.lean');
+    expect(out.a.names).toEqual(['a']);
+  });
+  it('remembers where a block without a declaration was last, while that file is still there', () => {
+    const previous = { b: { kind: 'statement' as const, hash: 'h-b', file: 'PW/Old.lean', names: [], status: 'stated' as const, findings: [] } };
+    const there = derive(input({ previous, files: [{ path: 'PW/Defs.lean', text: DEFS }, { path: 'PW/A.lean', text: proved('a') }, { path: 'PW/Old.lean', text: stated('b') }] }));
+    expect(there.b.file).toBe('PW/Old.lean');
+    const gone = derive(input({ previous, files: [{ path: 'PW/Defs.lean', text: DEFS }, { path: 'PW/A.lean', text: proved('a') }] }));
+    expect(gone.b.file).toBe('');
+  });
+});
+
+describe('recorded deviations', () => {
+  const deviation = { kind: 'deviation' as const, block: 'b', message: 'extra hypothesis' };
+  const previous = derive(input({ report: report([deviation, { kind: 'stuck', block: 'b', message: 'old' }]) }));
+  it('stay on the statement a later prove job proves, when its report names none', () => {
+    const out = derive(input({ previous, target: 'b', report: report([]) }));
+    expect(out.b.status).toBe('proved');
+    expect(out.b.findings).toEqual([deviation]);
+  });
+  it('are replaced by the deviations a later report names', () => {
+    const now = { kind: 'deviation' as const, block: 'b', message: 'a different one' };
+    expect(derive(input({ previous, target: 'b', report: report([now]) })).b.findings).toEqual([now]);
+    expect(derive(input({ previous, report: report([now]) })).b.findings).toEqual([now]);
+  });
+  it('are dropped once the block has changed and been translated again', () => {
+    const items = [def('syn'), def('typ'), st('a'), { ...st('b'), hash: 'h-b2' }];
+    expect(derive(input({ previous, items, report: report([]) })).b.findings).toEqual([]);
   });
 });
