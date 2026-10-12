@@ -7,6 +7,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { watchFile } = require('./watch.cjs');
 const workspace = require('./workspace.cjs');
+const lean = require('./lean.cjs');
 
 const DIST = path.join(__dirname, '..', 'dist');
 
@@ -157,6 +158,65 @@ ipcMain.handle('workspace-rename', (e, { path: p, name }) => workspace.renameFil
 // To the system's trash, where it can be recovered; never deleted outright.
 ipcMain.handle('workspace-trash', (e, p) => shell.trashItem(workspace.mustBeInside(rootOf(e), p)));
 ipcMain.handle('workspace-reveal', (e, p) => { shell.showItemInFolder(workspace.mustBeInside(rootOf(e), p)); });
+
+// ---------- mechanization in Lean ----------
+// A window may work only in the Lean folder of the document it has open, which
+// is the one it is watching.
+function leanFolder(e, docPath) {
+  if (!docPath || watchers.get(e.sender.id)?.path !== docPath) throw new Error('That is not the document this window has open.');
+  return lean.leanDir(docPath);
+}
+/** The job each window is running, if any. */
+const leanRuns = new Map();
+
+ipcMain.handle('lean-tools', () => lean.findTools());
+ipcMain.handle('lean-open', async (e, docPath) => {
+  const dir = leanFolder(e, docPath);
+  return { dir, status: await lean.readStatus(dir) };
+});
+ipcMain.handle('lean-run', async (e, { docPath, prompt, snapshot, schema, model, effort }) => {
+  const sender = e.sender;
+  const id = sender.id;
+  if (leanRuns.has(id)) throw new Error('A job is already running in this window.');
+  const dir = leanFolder(e, docPath);
+  const tools = await lean.findTools();
+  if (!tools.claude || !tools.lake) throw new Error('Claude Code or Lean was not found.');
+  const env = lean.childEnv(tools);
+  const args = lean.claudeArgs({ model, effort, schema, instructions: '' });
+  await lean.ensureProject(dir, tools.lake, env);
+  await lean.writeSnapshot(dir, snapshot);
+  args[args.length - 1] = await lean.writeInstructions(dir);
+  const run = lean.runClaude({ claude: tools.claude, dir, prompt, args, env, onLine: (line) => { if (!sender.isDestroyed()) sender.send('lean-event', { line }); } });
+  leanRuns.set(id, run);
+  // a window closed mid-job takes its job with it
+  sender.once('destroyed', run.cancel);
+  try {
+    return await run.done;
+  } finally {
+    leanRuns.delete(id);
+    if (!sender.isDestroyed()) sender.removeListener('destroyed', run.cancel);
+  }
+});
+ipcMain.handle('lean-cancel', (e) => { leanRuns.get(e.sender.id)?.cancel(); });
+// Lean files of statements the document no longer has go to the system's trash, where they can be recovered.
+ipcMain.handle('lean-build', async (e, { docPath, keep }) => {
+  const dir = leanFolder(e, docPath);
+  const tools = await lean.findTools();
+  if (!tools.lake) return { started: false, code: null, output: 'lake was not found.', files: [], removed: [] };
+  return lean.runBuild({
+    dir, lake: tools.lake, env: lean.childEnv(tools),
+    ...(Array.isArray(keep) && keep.every((k) => typeof k === 'string') ? { keep } : {}),
+    remove: (p) => shell.trashItem(p),
+  });
+});
+ipcMain.handle('lean-write-status', (e, { docPath, status }) => lean.writeStatus(leanFolder(e, docPath), status));
+ipcMain.handle('lean-recreate', async (e, docPath) => {
+  const dir = leanFolder(e, docPath);
+  const tools = await lean.findTools();
+  if (!tools.lake) throw new Error('lake was not found.');
+  await lean.recreateProject(dir, tools.lake, lean.childEnv(tools));
+});
+ipcMain.handle('lean-reveal', async (e, docPath) => { await shell.openPath(leanFolder(e, docPath)); });
 
 // "Open PDF": write to a temp file and hand it to the system viewer.
 ipcMain.handle('open-pdf', async (_e, { name, data }) => {

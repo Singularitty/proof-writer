@@ -6,6 +6,34 @@ export interface FolderEntry { name: string; path: string; kind: 'dir' | 'file';
 /** A listing of the open folder or of a folder inside it. */
 export interface FolderListing { root: string; dir: string; parent: string | null; entries: FolderEntry[] }
 
+/** Where the two programs a mechanization needs were found; null for one that was not. */
+export interface LeanTools { claude: string | null; lake: string | null }
+/** How a job ended. `report` is whatever the agent answered with, unchecked. */
+export interface LeanRunResult { ok: boolean; report: unknown; cancelled: boolean; error?: string }
+/**
+ * A build's output and the Lean files as they are after it, paths relative to the Lean folder.
+ * `removed` lists the Lean files of statements the document no longer has, which were moved to the trash.
+ */
+export interface LeanBuildResult { started: boolean; code: number | null; output: string; files: { path: string; text: string }[]; removed: string[] }
+
+/** Mechanizing the window's document in Lean (electron/lean.cjs). Every call is confined to that document's Lean folder. */
+export interface LeanBridge {
+  tools(): Promise<LeanTools>;
+  /** The Lean folder's path and what its mechanization.json holds (null if there is none). */
+  open(docPath: string): Promise<{ dir: string; status: unknown }>;
+  /** Runs Claude Code in the Lean folder, creating the project first if needed. Resolves when the run ends. */
+  run(job: { docPath: string; prompt: string; snapshot: { json: string; md: string }; schema: unknown; model: string; effort: string }): Promise<LeanRunResult>;
+  cancel(): Promise<void>;
+  /** Builds the project. Given `keep` (Lean module names), first moves the other modules' files, except Defs, to the trash. */
+  build(docPath: string, keep?: string[]): Promise<LeanBuildResult>;
+  writeStatus(docPath: string, status: unknown): Promise<void>;
+  /** Rewrites the files that make the folder a Lake project, leaving the Lean sources alone. */
+  recreate(docPath: string): Promise<void>;
+  reveal(docPath: string): Promise<void>;
+  /** Activity of the running job, a line at a time. */
+  onEvent(cb: (e: { line: string }) => void): () => void;
+}
+
 /** Bridge exposed by electron/preload.cjs; undefined in the browser build. */
 export interface DesktopBridge {
   platform: string;
@@ -34,6 +62,7 @@ export interface DesktopBridge {
     trash(path: string): Promise<void>;
     reveal(path: string): Promise<void>;
   };
+  lean: LeanBridge;
 }
 
 declare global {
