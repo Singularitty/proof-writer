@@ -19,7 +19,7 @@ Your report tells the author *why* things are as they are.
 * Math is LaTeX. Macros (`\ty{\Gamma}{e}{\tau}`) are defined under `snippets`
   in the JSON and listed at the top of the Markdown.
 * Every block, rule, grammar row and case has an id. You refer to parts of
-  the document by these ids, never by position or number.
+  the document in the report's structured fields, by these ids.
 * A **definition** is a grammar block, a rules block, or a statement of kind
   definition. A **statement** is a theorem, lemma, corollary, proposition or
   conjecture.
@@ -42,17 +42,27 @@ CLAUDE.md, CONVENTIONS.md                instructions
 document.json, document.md               the document
 ```
 
+* The only files under `PW/` are `Defs.lean` and the statement modules the
+  prompt names. Create no others: the app moves any other `.lean` file there
+  to the trash. A helper that several statements share goes in
+  `PW/Defs.lean`; a helper for one statement goes in that statement's file.
+* A statement's declarations live only in its own file, and a definition's
+  only in `PW/Defs.lean`. The app ignores a marker placed anywhere else.
 * A statement's file imports `PW.Defs` and the modules of the statements its
-  written proof cites. The prompt lists these.
+  written proof cites. The prompt lists these. The app reads the imports: a
+  statement rests on everything its file imports, cited or not.
 * If statements cite each other in a circle, their imports would be circular.
   State them without importing each other, and report an `inconsistency`
   naming the blocks in the circle.
-* The app keeps `PW.lean` up to date. After a sync it removes the file of any
-  statement the document no longer has. You cannot delete files, so do not
-  edit or empty such a file.
+* The app keeps `PW.lean` up to date. When a job starts it lists every module
+  the document needs, `PW.Defs` and one per statement, so `lake build` checks
+  them all and fails for a module that has no file yet.
+* After a sync that finishes, the app removes the file of any statement the
+  document no longer has. You cannot delete files, so do not edit or empty
+  such a file.
 * If a statement's label changed, its proof may sit in a file under the old
-  module name. Write the statement and its proof to the module the prompt
-  names, and leave the old file for the app to remove.
+  module name; the prompt says which. Write the statement and its proof to
+  the module the prompt names, and leave the old file for the app to remove.
 * The project has no dependencies. Use core Lean and its standard library
   only. Do not add Mathlib, Batteries, Aesop or anything else to the lakefile.
 
@@ -78,7 +88,9 @@ inductive HasType : Ctx → Tm → Ty → Prop where
   it, and carries that definition's block id.
 
 The app uses markers to tie build errors to blocks. A declaration without one
-cannot be shown to the author.
+cannot be shown to the author. A marker counts only where its block belongs
+(see Layout), outside block comments, and only with a declaration under it: a
+statement's marker needs a `theorem` or `lemma`.
 
 ## Translating definitions (sync)
 
@@ -97,8 +109,11 @@ cannot be shown to the author.
   report the problem; do not quietly repair it.
 * If a definition cannot be translated, leave its declaration out entirely, so
   the file still builds. Report it as `stuck` on that block. Still translate
-  everything that does not depend on it. Statements that need it are then
-  reported as `stuck` too.
+  everything that does not depend on it.
+* A statement that needs the missing definition is still given its file, with
+  the statement as far as it can be stated and a `deviation` saying what is
+  left out. If it cannot be stated at all, leave its file without it and
+  report the block as `stuck`.
 
 ## Stating (sync)
 
@@ -137,13 +152,21 @@ cannot be shown to the author.
 These hold even where `CONVENTIONS.md` says otherwise.
 
 * No `axiom`, ever.
-* No `sorry` in `PW/Defs.lean`: a definition is complete or it is reported as `stuck`.
+* No `sorry` in `PW/Defs.lean`: a definition is complete, or it is left out
+  and reported as `stuck` (see Translating definitions). That is the way out,
+  not a `sorry`.
 * No `sorry` or `admit` in the proof itself when you report it as done.
+* No `native_decide`.
+* Nothing named `sorry`, `admit`, `sorryAx`, `axiom` or `native_decide`, in
+  any namespace. The app reads those words in a file as an unfinished or
+  unsound proof, whatever they are the name of.
 * No weakening of a definition or a statement so that a proof goes through.
 * No changing the statement a prove job is proving. Its hypotheses and
   conclusion stay exactly as the sync left them.
 * No `unsafe`, no `implemented_by`, no changing options to silence errors.
-* No commands other than `lake build` and `lake env lean <file>`.
+* No commands other than `lake build` and `lake build <module>`.
+* No `.lean` files under `PW/` other than `Defs.lean` and the statement
+  modules the prompt names.
 * No writing or deleting files outside this folder.
 * No editing `document.json`, `document.md`, `mechanization.json`, `CLAUDE.md`,
   `CONVENTIONS.md`, `lakefile.toml`, `lean-toolchain` or `PW.lean`.
@@ -151,8 +174,9 @@ These hold even where `CONVENTIONS.md` says otherwise.
 
 ## Checking
 
-Run `lake build` before you finish and read its output. Fix what you can
-within the rules above. What you cannot fix, report.
+Run `lake build` before you finish and read its output. `lake build PW.LemA`
+checks one module and what it imports. Fix what you can within the rules
+above. What you cannot fix, report.
 
 ## Reporting
 
@@ -168,7 +192,10 @@ End every job with the report. Its fields:
   of the definition or statement it is about. Kinds:
   * `deviation`: the Lean text differs from the document, and how. Report one
     whenever you add a hypothesis, strengthen an induction hypothesis in a way
-    that changes the statement, or pick one reading of ambiguous prose.
+    that changes the statement, or pick one reading of ambiguous prose. For a
+    block you touched, report every deviation that holds now, including those
+    from earlier jobs that are still in the Lean text, not only new ones: the
+    deviations you report for a block replace the ones recorded for it.
   * `inconsistency`: two blocks disagree. Put the others in `related`. For
     example, a proof case uses a rule in a way its premises do not allow, or
     a lemma is used with a context shape it is not stated for.

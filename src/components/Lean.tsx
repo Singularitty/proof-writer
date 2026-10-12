@@ -57,8 +57,9 @@ export function Lean() {
   }, [focus]);
 
   if (!desktop) return null;
+  if (desktop.platform === 'win32') return <p className="dim">Mechanizing in Lean is not supported on Windows yet.</p>;
   if (!docPath) return <p className="dim">Save the document to a file to mechanize it. Its Lean files are kept in a folder beside it.</p>;
-  if (!tools) return error ? <ErrorBox error={error} /> : <p className="dim">Looking for Claude Code and Lean…</p>;
+  if (!tools) return error ? <ErrorBox error={error} onCheck={() => void useLean.getState().checkTools()} /> : <p className="dim">Looking for Claude Code and Lean…</p>;
   if (!tools.claude || !tools.lake) return <Setup claude={!!tools.claude} lake={!!tools.lake} />;
 
   // the folder could not be opened, so there is nothing to show but why
@@ -76,7 +77,7 @@ export function Lean() {
   return (
     <div className="lean">
       <div className="lean-bar">
-        <button className="primary" disabled={!ready || !view.needsSync} onClick={() => void sync()} title="Translate the definitions and state every lemma and theorem in Lean">
+        <button className="primary" disabled={!ready} onClick={() => void sync()} title="Translate the definitions and state every lemma and theorem in Lean">
           Sync definitions{view.outOfDate > 0 && <span className="tab-count">{view.outOfDate}</span>}
         </button>
         <Choices disabled={busy} />
@@ -96,17 +97,17 @@ export function Lean() {
   );
 }
 
-function ErrorBox({ error, busy, onRecreate }: { error: string; busy?: boolean; onRecreate?: () => void }) {
+function ErrorBox({ error, busy, onRecreate, onCheck }: { error: string; busy?: boolean; onRecreate?: () => void; onCheck?: () => void }) {
   return (
     <div className="lean-error">
       <p>{error}</p>
+      {onCheck && <button className="mini" onClick={onCheck}>Check again</button>}
       {onRecreate && /lake build could not run/.test(error) && <button className="mini" disabled={busy} onClick={onRecreate}>Recreate project files</button>}
     </div>
   );
 }
 
 function Setup({ claude, lake }: { claude: boolean; lake: boolean }) {
-  const windows = desktop?.platform === 'win32';
   return (
     <div className="lean-setup">
       <p>Mechanizing a document needs two programs on this computer.</p>
@@ -115,9 +116,7 @@ function Setup({ claude, lake }: { claude: boolean; lake: boolean }) {
       )}
       {!lake && (
         <p>
-          <strong>Lean</strong> was not found. {windows
-            ? <>Install it with the elan installer from <a href="https://lean-lang.org/install/" target="_blank" rel="noreferrer">lean-lang.org/install</a>.</>
-            : <>Install it by running this in a terminal:<code className="lean-cmd">curl https://elan.lean-lang.org/elan-init.sh -sSf | sh</code></>}
+          <strong>Lean</strong> was not found. Install it by running this in a terminal:<code className="lean-cmd">curl https://elan.lean-lang.org/elan-init.sh -sSf | sh</code>
         </p>
       )}
       <button onClick={() => void useLean.getState().checkTools()}>Check again</button>

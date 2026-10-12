@@ -207,6 +207,7 @@ In the desktop app, the **Lean** tab has [Claude Code](https://claude.com/claude
 turn the document into a [Lean 4](https://lean-lang.org) development and prove
 its statements there. It needs both programs installed; if one is missing the
 tab says which and how to get it. The document has to be saved to a file.
+Mechanizing is not supported on Windows yet; the tab says so there.
 
 **Sync definitions** translates every grammar, rules block and definition, and
 writes the Lean statement of every lemma and theorem with its proof left open.
@@ -217,7 +218,10 @@ that lemma.
 
 Nothing runs until you press a button. Editing a block marks it **out of
 date**, and editing a definition marks every statement out of date, until the
-next sync; a proof request syncs first if anything is.
+next sync that finishes; one that fails or is cancelled leaves them out of
+date. A proof request syncs first if anything is out of date or a definition
+failed, and **Sync definitions** can be pressed again at any time to retry a
+translation that failed.
 
 | Status | Meaning |
 | --- | --- |
@@ -225,15 +229,18 @@ next sync; a proof request syncs first if anything is.
 | Out of date | Changed since it was translated |
 | Translated | A definition that compiles |
 | Stated, not proved | The Lean statement compiles; no proof yet, or the file still has a `sorry` |
-| Proved | Builds with nothing assumed |
+| Proved | Builds, with no `sorry` or axiom of its own; an unproved lemma it relies on is named as assumed |
 | Proved with deviations | Builds, but the Lean statement differs from the text; the difference is listed |
 | Failed | Did not compile; the reason is listed |
 
 The app decides these itself by building the project and reading the files,
-and it checks for `sorry` and `axiom` itself. A `sorry` anywhere in a
-statement's file keeps it at Stated, not proved, and a `sorry` in the
-definitions makes that definition Failed. A statement is never shown as proved
-because Claude said so.
+and it checks for `sorry`, `axiom` and `native_decide` itself. A `sorry`
+anywhere in a statement's file keeps it at Stated, not proved, and a `sorry`
+in the definitions makes that definition Failed. What a statement relies on
+is read from its Lean file's imports as well as from the lemmas your proof
+cites: if any of it fails or declares an axiom, the statement is Failed too.
+A statement is never shown as proved because Claude said so, and a build that
+was cancelled or could not finish changes nothing.
 
 Under each row the tab lists what the last job found:
 
@@ -258,15 +265,22 @@ For `stlc.proof.json` the Lean files are in `stlc-lean/` beside it, an
 ordinary Lake project with no dependencies that you can open in an editor:
 
 * `PW/Defs.lean` holds the definitions, and `PW/<Label>.lean` one statement
-  each. A comment `-- pw: <id>` above a declaration ties it to a block.
+  each. A comment `-- pw: <id>` above a declaration ties it to a block, and
+  counts only in the file that block belongs in.
+* `lakefile.toml` and `PW.lean` are the app's, rewritten before every build.
 * `CLAUDE.md` holds the instructions Claude follows. The app rewrites it
   before every job.
 * `CONVENTIONS.md` is yours: write there how you want things represented
   ("contexts are lists, newest binding first") and it is followed where it does
   not conflict with the rules in `CLAUDE.md`.
 * `mechanization.json` is the app's record of statuses and findings.
+* `.proof-writer` names the document the folder was made for. The app works
+  only in a folder it made: if a folder with the Lean folder's name is
+  already there with something else in it, or belongs to another document
+  (`stlc.json` and `stlc.proof.json` would share `stlc-lean/`), jobs are
+  refused with a message and the folder is left alone.
 
-A sync also tidies the folder. A statement's file is named after its label, so
+A sync that finishes also tidies the folder. A statement's file is named after its label, so
 when a statement is deleted from the document, or its label changes, its old
 file is moved to the system trash; the proof of a relabelled statement is
 carried over to the new file by the sync. For the same reason, a `.lean` file
@@ -282,10 +296,17 @@ document, rename or move the folder with it, or the next sync starts afresh.
 
 Jobs run one at a time and stop after 30 minutes. **Cancel** and quitting the
 app stop a job in the same way. Each of the three stops Claude Code and the Lean
-build it started. Proofs use core Lean only,
+build it started. **Cancel** also stops the build the app runs after a job,
+and so does opening another document; nothing is recorded from a build that
+was stopped. Proofs use core Lean only,
 so facts a library would provide (about finite maps, say) have to be proved
 or avoided. A proof Claude cannot finish is reported, not papered over, and
 that is often a sign the written proof has a gap.
+
+Building a Lean project runs code on your computer, and the Lean files are
+written by an agent reading your document. Mechanize only documents you
+trust.
+
 ## Files in the desktop app
 
 The **Files** tab shows a folder. **Open folder…** chooses it, and the app

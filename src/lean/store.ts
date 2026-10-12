@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import type { Doc, Id } from '../model/types';
 import { useStore } from '../store';
 import { desktop, type LeanTools } from '../util/desktop';
-import { performJob, proveWithSync, type JobDeps, type JobResult } from './job';
+import { errorMessage as message, performJob, proveWithSync, type JobDeps, type JobResult } from './job';
 import { EFFORTS, MODELS, type Effort, type Model } from './prompt';
 import { applyProposal } from './proposals';
 import { emptyMechanization, readMechanization, type Mechanization } from './status';
@@ -50,6 +50,7 @@ interface LeanState extends Prefs {
   checkTools: () => Promise<void>;
   sync: () => Promise<void>;
   prove: (id: Id) => Promise<void>;
+  /** Stops the running job, or the build that follows it. */
   cancel: () => void;
   /** Accepts or dismisses a proposal. Accepting edits the document as one undo step. Does nothing while a job runs, whose result would undo it; the tab disables the buttons then. */
   settle: (proposalId: string, accept: boolean) => Promise<void>;
@@ -61,9 +62,6 @@ interface LeanState extends Prefs {
   /** Called once the tab has scrolled to the requested row, so opening the tab later does not scroll again. */
   clearFocus: () => void;
 }
-
-/** An error from the main process without Electron's wrapping. */
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
 let listening = false;
 function listen() {
@@ -107,6 +105,10 @@ export const useLean = create<LeanState>((set, get) => ({
   focus: null,
 
   load: async (docPath) => {
+    // A job belongs to the document it was started for. Its result would be
+    // dropped anyway, and the main process serves only the open document, so
+    // it could no longer build or record anything.
+    if (get().job && get().docPath !== docPath) void desktop?.lean.cancel();
     set({ docPath, dir: null, mech: emptyMechanization(), error: null });
     if (!desktop) return;
     listen();
@@ -124,7 +126,15 @@ export const useLean = create<LeanState>((set, get) => ({
     }
   },
   checkTools: async () => {
-    if (desktop) set({ tools: await desktop.lean.tools() });
+    if (!desktop) return;
+    try {
+      set({ tools: await desktop.lean.tools(), error: null });
+      // if the lookup had failed while loading, the folder was never opened
+      const { docPath, dir } = get();
+      if (docPath && !dir) await get().load(docPath);
+    } catch (e) {
+      set({ error: message(e) });
+    }
   },
   sync: () => start('sync'),
   prove: (id) => start('prove', id),
