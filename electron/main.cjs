@@ -174,27 +174,38 @@ ipcMain.handle('lean-open', async (e, docPath) => {
   const dir = leanFolder(e, docPath);
   return { dir, status: await lean.readStatus(dir) };
 });
-ipcMain.handle('lean-run', async (e, { docPath, prompt, snapshot, schema, model, effort }) => {
+const isObject = (v) => typeof v === 'object' && v !== null;
+ipcMain.handle('lean-run', async (e, job) => {
+  if (!isObject(job) || typeof job.prompt !== 'string' || !isObject(job.snapshot)
+    || typeof job.snapshot.json !== 'string' || typeof job.snapshot.md !== 'string' || !isObject(job.schema)) throw new Error('Malformed job.');
+  const { docPath, prompt, snapshot, schema, model, effort } = job;
   const sender = e.sender;
   const id = sender.id;
   if (leanRuns.has(id)) throw new Error('A job is already running in this window.');
-  const dir = leanFolder(e, docPath);
-  const tools = await lean.findTools();
-  if (!tools.claude || !tools.lake) throw new Error('Claude Code or Lean was not found.');
-  const env = lean.childEnv(tools);
-  const args = lean.claudeArgs({ model, effort, schema, instructions: '' });
-  await lean.ensureProject(dir, tools.lake, env);
-  await lean.writeSnapshot(dir, snapshot);
-  args[args.length - 1] = await lean.writeInstructions(dir);
-  const run = lean.runClaude({ claude: tools.claude, dir, prompt, args, env, onLine: (line) => { if (!sender.isDestroyed()) sender.send('lean-event', { line }); } });
-  leanRuns.set(id, run);
-  // a window closed mid-job takes its job with it
-  sender.once('destroyed', run.cancel);
+  // The slot is taken before anything is awaited; until the job has started,
+  // cancelling only marks it, and `cancel` is then the run's own.
+  let cancelled = false;
+  const slot = { cancel: () => { cancelled = true; } };
+  leanRuns.set(id, slot);
+  // a window closed mid-job (or mid-preparation) takes its job with it
+  const onGone = () => slot.cancel();
+  sender.once('destroyed', onGone);
   try {
+    const dir = leanFolder(e, docPath);
+    const tools = await lean.findTools();
+    if (!tools.claude || !tools.lake) throw new Error('Claude Code or Lean was not found.');
+    const env = lean.childEnv(tools);
+    const args = lean.claudeArgs({ model, effort, schema, instructions: '' });
+    await lean.ensureProject(dir, tools.lake, env);
+    await lean.writeSnapshot(dir, snapshot);
+    args[args.length - 1] = await lean.writeInstructions(dir);
+    if (cancelled) return { ok: false, report: null, cancelled: true, error: 'Cancelled.' };
+    const run = lean.runClaude({ claude: tools.claude, dir, prompt, args, env, onLine: (line) => { if (!sender.isDestroyed()) sender.send('lean-event', { line }); } });
+    slot.cancel = run.cancel;
     return await run.done;
   } finally {
     leanRuns.delete(id);
-    if (!sender.isDestroyed()) sender.removeListener('destroyed', run.cancel);
+    if (!sender.isDestroyed()) sender.removeListener('destroyed', onGone);
   }
 });
 ipcMain.handle('lean-cancel', (e) => { leanRuns.get(e.sender.id)?.cancel(); });
@@ -209,7 +220,10 @@ ipcMain.handle('lean-build', async (e, { docPath, keep }) => {
     remove: (p) => shell.trashItem(p),
   });
 });
-ipcMain.handle('lean-write-status', (e, { docPath, status }) => lean.writeStatus(leanFolder(e, docPath), status));
+ipcMain.handle('lean-write-status', (e, payload) => {
+  if (!isObject(payload) || !isObject(payload.status)) throw new Error('Malformed status.');
+  return lean.writeStatus(leanFolder(e, payload.docPath), payload.status);
+});
 ipcMain.handle('lean-recreate', async (e, docPath) => {
   const dir = leanFolder(e, docPath);
   const tools = await lean.findTools();
