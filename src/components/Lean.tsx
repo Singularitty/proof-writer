@@ -51,13 +51,18 @@ export function Lean() {
   const name = useRowName();
 
   useEffect(() => {
-    if (focus) document.getElementById('lean-row-' + focus.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (!focus) return;
+    document.getElementById('lean-row-' + focus.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    useLean.getState().clearFocus();
   }, [focus]);
 
   if (!desktop) return null;
   if (!docPath) return <p className="dim">Save the document to a file to mechanize it. Its Lean files are kept in a folder beside it.</p>;
-  if (!tools) return <p className="dim">Looking for Claude Code and Lean…</p>;
+  if (!tools) return error ? <ErrorBox error={error} /> : <p className="dim">Looking for Claude Code and Lean…</p>;
   if (!tools.claude || !tools.lake) return <Setup claude={!!tools.claude} lake={!!tools.lake} />;
+
+  // the folder could not be opened, so there is nothing to show but why
+  if (!dir && error) return <ErrorBox error={error} />;
 
   const busy = job !== null;
   // until the folder has been opened a job could not start
@@ -77,12 +82,7 @@ export function Lean() {
         <Choices disabled={busy} />
       </div>
       {job && <Running job={job} name={job.target ? targetName(job.target) : ''} onCancel={cancel} />}
-      {error && (
-        <div className="lean-error">
-          <p>{error}</p>
-          {/lake build could not run/.test(error) && <button className="mini" disabled={busy} onClick={() => void recreate()}>Recreate project files</button>}
-        </div>
-      )}
+      {error && <ErrorBox error={error} busy={busy} onRecreate={() => void recreate()} />}
       {view.definitions.length > 0 && <h4>Definitions</h4>}
       {view.definitions.map((r) => <Row key={r.id} row={r} name={name} busy={busy} ready={ready} />)}
       {view.statements.length > 0 && <h4>Statements</h4>}
@@ -92,6 +92,15 @@ export function Lean() {
       {view.loose.map((p) => <ProposalView key={p.id} p={p} busy={busy} />)}
       {mech.lastJob && <LastJob />}
       {dir && <p className="lean-dir dim">Lean files: <a onClick={reveal} title={dir}>{dir.split(/[\\/]/).pop()}</a></p>}
+    </div>
+  );
+}
+
+function ErrorBox({ error, busy, onRecreate }: { error: string; busy?: boolean; onRecreate?: () => void }) {
+  return (
+    <div className="lean-error">
+      <p>{error}</p>
+      {onRecreate && /lake build could not run/.test(error) && <button className="mini" disabled={busy} onClick={onRecreate}>Recreate project files</button>}
     </div>
   );
 }
@@ -138,9 +147,9 @@ function Running({ job, name, onCancel }: { job: RunningJob; name: string; onCan
   const what = job.kind === 'sync' ? 'Syncing definitions' : `Proving ${name}`;
   const settings = [job.model && MODEL_NAME[job.model as Model], job.effort && EFFORT_NAME[job.effort as Effort].toLowerCase()].filter(Boolean).join(', ');
   return (
-    <div className="lean-job" role="status">
+    <div className="lean-job">
       <div className="lean-job-head">
-        <strong>{what}{settings && ` · ${settings}`}</strong>
+        <strong role="status">{what}{settings && ` · ${settings}`}</strong>
         <button className="mini danger" onClick={onCancel}>Cancel</button>
       </div>
       {job.lines.length ? <ul>{job.lines.map((l, i) => <li key={i}>{l}</li>)}</ul> : <p className="dim">Starting…</p>}

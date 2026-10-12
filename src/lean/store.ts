@@ -58,6 +58,8 @@ interface LeanState extends Prefs {
   setModel: (m: Model | '') => void;
   setEffort: (e: Effort | '') => void;
   show: (id: Id) => void;
+  /** Called once the tab has scrolled to the requested row, so opening the tab later does not scroll again. */
+  clearFocus: () => void;
 }
 
 /** An error from the main process without Electron's wrapping. */
@@ -110,13 +112,15 @@ export const useLean = create<LeanState>((set, get) => ({
     listen();
     try {
       const tools = await desktop.lean.tools();
-      if (!docPath) { set({ tools }); return; }
+      // kept at once, so a failure opening the folder does not hide that they were found
+      if (get().docPath === docPath) set({ tools });
+      if (!docPath) return;
       // the main process serves only the document this window is watching
       await desktop.watchDocument(docPath);
       const { dir, status } = await desktop.lean.open(docPath);
-      if (get().docPath === docPath) set({ tools, dir, mech: readMechanization(status) });
+      if (get().docPath === docPath) set({ dir, mech: readMechanization(status) });
     } catch (e) {
-      set({ error: message(e) });
+      if (get().docPath === docPath) set({ error: message(e) });
     }
   },
   checkTools: async () => {
@@ -156,4 +160,5 @@ export const useLean = create<LeanState>((set, get) => ({
     useStore.getState().showView('sidebar');
     set({ focus: { id, n: (get().focus?.n ?? 0) + 1 } });
   },
+  clearFocus: () => set({ focus: null }),
 }));
