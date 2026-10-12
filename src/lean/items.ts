@@ -60,6 +60,10 @@ function hashOf(content: unknown, snippets: Snippet[]): string {
   return hashText(text + '\n' + snippetsUsed(text, snippets));
 }
 
+/** A proof as its content: ids, folding and derivation captions left out. */
+const proofContent = (proof: Block[] | undefined): unknown =>
+  JSON.parse(JSON.stringify(proof ?? [], (k, v) => (k === 'id' || k === 'collapsed' || k === 'caption' ? undefined : v)));
+
 /** The prose a definition holds besides its statement: the text blocks inside it. */
 function proseInside(blocks: Block[] | undefined): string[] {
   const out: string[] = [];
@@ -72,14 +76,15 @@ const camel = (s: string) => s.split(/[^A-Za-z0-9]+/).filter(Boolean).map((p) =>
 /** A Lean module name for each statement: valid, not `Defs`, and no two the same. */
 function moduleNames(statements: { id: Id; label: string }[]): Map<Id, string> {
   const out = new Map<Id, string>();
-  const taken = new Set<string>(['Defs']);
+  // Taken names are compared lower-cased: macOS's default filesystem ignores case.
+  const taken = new Set<string>(['defs']);
   for (const s of statements) {
     let name = camel(s.label);
     if (!name) name = 'S' + camel(s.id);
     if (!/^[A-Z]/.test(name)) name = 'S' + name;
-    if (taken.has(name)) name = `${name}_${camel(s.id) || out.size}`;
-    while (taken.has(name)) name += '_';
-    taken.add(name);
+    if (taken.has(name.toLowerCase())) name = `${name}_${camel(s.id) || out.size}`;
+    while (taken.has(name.toLowerCase())) name += '_';
+    taken.add(name.toLowerCase());
     out.set(s.id, name);
   }
   return out;
@@ -101,7 +106,7 @@ export function docItems(doc: Doc): Item[] {
       items.push({
         id: b.id, kind: 'statement',
         hash: hashOf([b.kind, sanitizeLabel(b.label), b.statement], doc.snippets),
-        proofHash: hashOf(b.proof ?? [], doc.snippets),
+        proofHash: hashOf(proofContent(b.proof), doc.snippets),
         hasProof: hasContent(b.proof), label: sanitizeLabel(b.label), title: b.title, theoremKind: b.kind,
       });
     }
@@ -136,9 +141,9 @@ export function staleness(items: Item[], recorded: Record<Id, { hash: string; pr
       if (i.kind !== 'statement' && anyRecorded) out.defsStale = true;
       continue;
     }
-    if (r.hash !== i.hash) {
+    if (r.hash !== i.hash || r.kind !== i.kind) {
       out.stale.add(i.id);
-      if (i.kind !== 'statement') out.defsStale = true;
+      if (i.kind !== 'statement' || r.kind !== 'statement') out.defsStale = true;
     }
     if (r.proofHash !== undefined && i.proofHash !== undefined && r.proofHash !== i.proofHash) out.proofChanged.add(i.id);
   }

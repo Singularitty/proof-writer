@@ -56,6 +56,18 @@ describe('hashes', () => {
     expect(b.hash).toBe(a.hash);
     expect(b.proofHash).not.toBe(a.proofHash);
   });
+  it('keep a proof apart from its folding and ids, but not from its content', () => {
+    const nested = (collapsed: boolean): Block => ({ id: 'in', type: 'theorem', kind: 'lemma', title: '', label: 'lem:in', statement: 'Inner.', collapsed });
+    const cases = (title: string): Block => ({ id: 'c', type: 'cases', intro: 'Cases:', cases: [{ id: 'k', title, body: [] }] });
+    const s = stmt('lem:a', 'lemma', [text('By cases.'), nested(false), cases('Case [[T-App]]')]);
+    const base = docItems(doc([s]))[0].proofHash;
+    const folded = { ...s, proof: [{ ...s.proof![0], id: 'x' }, nested(true), { ...s.proof![2], id: 'y' }] } as Block;
+    expect(docItems(doc([folded]))[0].proofHash).toBe(base);
+    const retitled = { ...s, proof: [s.proof![0], nested(false), cases('Case [[T-Abs]]')] } as Block;
+    expect(docItems(doc([retitled]))[0].proofHash).not.toBe(base);
+    const reworded = { ...s, proof: [text('By induction.'), nested(false), cases('Case [[T-App]]')] } as Block;
+    expect(docItems(doc([reworded]))[0].proofHash).not.toBe(base);
+  });
 });
 
 describe('module names', () => {
@@ -68,6 +80,10 @@ describe('module names', () => {
     for (const m of ms) expect(m).toMatch(/^[A-Z][A-Za-z0-9_]*$/);
     expect(new Set(ms).size).toBe(ms.length);
     expect(ms).not.toContain('Defs');
+  });
+  it('are distinct ignoring case, since the default macOS filesystem does not tell them apart', () => {
+    const ms = names(['lem:ab', 'lem:a-b']);
+    expect(new Set(ms.map((m) => m.toLowerCase())).size).toBe(2);
   });
 });
 
@@ -112,5 +128,15 @@ describe('staleness', () => {
     const s = staleness(docItems(doc([{ ...a, proof: [text('By cases.')] }])), rec);
     expect([...s.proofChanged]).toEqual([a.id]);
     expect([...s.stale]).toEqual([]);
+  });
+  it('reports a definition that became a statement, or the reverse, as stale definitions', () => {
+    const d = stmt('def:val', 'definition');
+    const toLemma = staleness(docItems(doc([{ ...d, kind: 'lemma' }])), record(doc([d])));
+    expect([...toLemma.stale]).toEqual([d.id]);
+    expect(toLemma.defsStale).toBe(true);
+    const l = stmt('lem:a');
+    const toDef = staleness(docItems(doc([{ ...l, kind: 'definition' }])), record(doc([l])));
+    expect([...toDef.stale]).toEqual([l.id]);
+    expect(toDef.defsStale).toBe(true);
   });
 });
