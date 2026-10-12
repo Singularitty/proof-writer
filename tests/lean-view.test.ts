@@ -62,6 +62,14 @@ describe('the rows of the Lean tab', () => {
     const fewer = { ...d, blocks: d.blocks.filter((b) => b.id !== 'c') };
     expect(leanView(fewer, m).needsSync).toBe(true);
   });
+  it('need a sync, and mark every statement out of date, when a definition was deleted', () => {
+    const d = doc();
+    const m = mech(d);
+    const fewer = { ...d, blocks: d.blocks.filter((b) => b.id !== 'r') };
+    const v = leanView(fewer, m);
+    expect(v.needsSync).toBe(true);
+    expect(v.statements.map((r) => r.status)).toEqual(['stale', 'stale', 'stale']);
+  });
   it('call a proof with a recorded deviation proved with deviations, and pass on what it assumes', () => {
     const d = doc();
     const m = mech(d, { a: { assumes: ['b'], findings: [{ kind: 'deviation', block: 'a', message: 'extra hypothesis' }] } });

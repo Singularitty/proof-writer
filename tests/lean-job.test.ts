@@ -113,6 +113,13 @@ describe('a sync', () => {
       { file: 'PW/Old.lean', name: '(file)', change: 'removed' },
     ]);
   });
+  it('still records the files the build removed when the run failed and nothing is left', async () => {
+    const f = fake([{ ok: false, report: null, cancelled: false, error: 'Not logged in' }], [{ ...built([]), removed: ['PW/Old.lean'] }]);
+    const r = await performJob(deps(f.bridge), 'sync');
+    expect(f.calls).toEqual(['run', 'build', 'write']);
+    expect(r.ok).toBe(false);
+    expect(r.mech.lastJob?.changes).toEqual([{ file: 'PW/Old.lean', name: '(file)', change: 'removed' }]);
+  });
   it('records a cancelled job, with statuses from what is on disk', async () => {
     const f = fake([{ ok: false, report: null, cancelled: true, error: 'Cancelled.' }], [built(STATED)]);
     const r = await performJob(deps(f.bridge), 'sync');

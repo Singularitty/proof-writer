@@ -78,16 +78,17 @@ export async function performJob(d: JobDeps, kind: 'sync' | 'prove', target?: Id
     return { mech, ok: false, error: `lake build could not run: ${built.output.trim().split('\n').slice(-6).join('\n')}` };
   }
 
+  const own = owners(doc, new Set(byId.keys()));
   const known = new Set<Id>();
   walkBlocks(doc.blocks, (b) => { known.add(b.id); });
   const read = readReport(ran.report, known);
-  // nothing ran and nothing is there: recording every block as failed would say more than is known
-  if (!ran.ok && !read && built.files.length === 0) return { mech, ok: false, error: ran.error ?? 'The job failed.' };
-  const report = read && attach(read, owners(doc, new Set(byId.keys())));
+  // nothing ran and nothing is there: recording every block as failed would say more than is known.
+  // Unless the build removed files, which the record must keep
+  if (!ran.ok && !read && built.files.length === 0 && built.removed.length === 0) return { mech, ok: false, error: ran.error ?? 'The job failed.' };
+  const report = read && attach(read, own);
 
   // A proof revisits the statement and the blocks of its written proof, so
   // their old open proposals give way to what it proposes now
-  const own = owners(doc, new Set(byId.keys()));
   const oldProposals = kind === 'prove'
     ? mech.proposals.filter((p) => p.state !== 'open' || own.get(p.block) !== target)
     : mech.proposals;

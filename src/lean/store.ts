@@ -51,7 +51,7 @@ interface LeanState extends Prefs {
   sync: () => Promise<void>;
   prove: (id: Id) => Promise<void>;
   cancel: () => void;
-  /** Accepts or dismisses a proposal. Accepting edits the document as one undo step. */
+  /** Accepts or dismisses a proposal. Accepting edits the document as one undo step. Does nothing while a job runs, whose result would undo it; the tab disables the buttons then. */
   settle: (proposalId: string, accept: boolean) => Promise<void>;
   recreate: () => Promise<void>;
   reveal: () => void;
@@ -74,7 +74,8 @@ function listen() {
 
 async function start(kind: 'sync' | 'prove', target?: Id) {
   const s = useLean.getState();
-  if (!desktop || !s.docPath || s.job) return;
+  // until the folder has been opened, `mech` is only the empty reset state, and a job would overwrite the real status file with it
+  if (!desktop || !s.docPath || !s.dir || s.job) return;
   const docPath = s.docPath;
   const { model, effort } = s;
   useLean.setState({ job: { kind, target, lines: [], model, effort }, error: null });
@@ -87,7 +88,7 @@ async function start(kind: 'sync' | 'prove', target?: Id) {
     // the user may have opened another document meanwhile; this result is not about it
     if (useLean.getState().docPath === docPath) useLean.setState({ mech: r.mech, error: r.error });
   } catch (e) {
-    useLean.setState({ error: message(e) });
+    if (useLean.getState().docPath === docPath) useLean.setState({ error: message(e) });
   } finally {
     useLean.setState({ job: null });
   }
@@ -125,7 +126,8 @@ export const useLean = create<LeanState>((set, get) => ({
   prove: (id) => start('prove', id),
   cancel: () => { void desktop?.lean.cancel(); },
   settle: async (proposalId, accept) => {
-    const { mech, docPath } = get();
+    const { mech, docPath, job } = get();
+    if (job) return;
     const p = mech.proposals.find((x) => x.id === proposalId);
     if (!p || p.state !== 'open') return;
     if (accept) {
