@@ -421,6 +421,44 @@ table.grammar tr:hover td.alts .mini.add, table.grammar tr:focus-within td.alts 
 .tk-issues .warning a { border-left-color: var(--warn); }
 .tk-issues .info a { color: var(--dim); }
 .tk-where { font-weight: 600; }
+/* The Lean tab. Rows reuse the Tracker's group, dot and issue styles. */
+.lean h4 { margin: 14px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); }
+.lean-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
+.lean-choices { display: flex; gap: 4px; }
+.lean-choices select { font-size: 12px; padding: 2px 2px; min-width: 0; max-width: 120px; }
+.lean-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.lean-row-head .tk-head { flex: 1; min-width: 0; }
+.tk-dot.lean-none { background: var(--line-strong); }
+.tk-dot.lean-stale { background: var(--warn); }
+.tk-dot.lean-stated { background: var(--accent); }
+.tk-dot.lean-translated, .tk-dot.lean-proved { background: var(--ok); }
+.tk-dot.lean-deviations { background: var(--ok); box-shadow: 0 0 0 2px var(--warn); }
+.tk-dot.lean-failed { background: var(--danger); }
+button.lean-dot { display: inline-block; padding: 0; border: none; cursor: pointer; margin: 0 2px; }
+.lean-job { margin: 6px 0 10px; padding: 6px 8px; border: 1px solid var(--accent-line); border-radius: 6px; background: var(--accent-glow); font-size: 13px; }
+.lean-job-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.lean-job ul { list-style: none; margin: 4px 0 0; padding: 0; font-family: var(--mono, monospace); font-size: 12px; color: var(--dim); }
+.lean-job li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lean-error { margin: 6px 0 10px; padding: 6px 8px; border: 1px solid var(--danger-line); border-radius: 6px; background: var(--danger-bg); color: var(--danger); font-size: 13px; }
+.lean-error p { margin: 0 0 4px; white-space: pre-wrap; }
+.lean-proposal { margin: 4px 0 6px 15px; padding: 6px 8px; border-left: 2px solid var(--accent); background: var(--accent-glow); border-radius: 0 5px 5px 0; font-size: 13px; }
+.lean-proposal-head { font-weight: 600; margin-bottom: 4px; }
+.lean-proposal-head .dim { font-weight: 400; }
+.lean-proposal pre { margin: 2px 0; padding: 3px 6px; border-radius: 4px; white-space: pre-wrap; word-break: break-word; font-size: 12px; }
+.lean-before { background: var(--danger-bg); text-decoration: line-through; }
+.lean-after { background: var(--ok-bg); }
+.lean-proposal .row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.lean-proposal a { cursor: pointer; }
+.lean-last { margin-top: 14px; font-size: 13px; }
+.lean-last summary { cursor: pointer; color: var(--dim); }
+.lean-last ul { list-style: none; margin: 4px 0; padding: 0; }
+.lean-change { font-size: 11px; padding: 0 4px; border-radius: 4px; background: var(--accent-soft); }
+.lean-change.removed { background: var(--danger-bg); color: var(--danger); }
+.lean-change.added { background: var(--ok-bg); color: var(--ok); }
+.lean-dir { margin-top: 10px; font-size: 12px; }
+.lean-dir a { cursor: pointer; text-decoration: underline; }
+.lean-setup p { margin: 0 0 8px; }
+.lean-cmd { display: block; margin-top: 4px; padding: 4px 6px; border-radius: 4px; background: var(--accent-soft); font-size: 12px; word-break: break-all; user-select: all; }
 .disk-change { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 16px 0; padding: 8px 12px; border-radius: 8px; background: var(--note-bg); border: 1px solid var(--note-line); color: var(--note-ink); }
 
 /* A displayed rule never spills out of its block: premises wrap onto more rows,

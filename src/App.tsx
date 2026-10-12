@@ -12,6 +12,7 @@ import { refreshFiles } from './components/Files';
 import { externalChange } from './util/external';
 import { loadFile } from './util/files';
 import { canSaveToFile, pickFileToOpen, saveToFile, useJustSaved, useSaveFileName } from './util/browserFiles';
+import { useLeanDocument } from './components/Lean';
 import { GitHubDialog } from './components/GitHubDialog';
 import type { Doc } from './model/types';
 import { VIEWS, dockedViews, gridColumns, hasSplitter, minWidth, openCount } from './model/layout';
@@ -30,6 +31,7 @@ export function savedTheme(): Theme {
 }
 
 export default function App() {
+  useLeanDocument();
   const [theme, setTheme] = useState<Theme>(savedTheme);
   const cycleTheme = () => {
     const next: Theme = theme === 'system' ? 'dark' : theme === 'dark' ? 'light' : 'system';

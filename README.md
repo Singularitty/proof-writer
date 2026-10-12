@@ -30,6 +30,10 @@ and it opens with a worked example (type soundness for the simply typed
 * **Checks on the proof's structure.** The Tracker lists dangling references,
   lemmas nothing uses, circular dependencies, case analyses that miss a rule,
   and proof trees with open goals or steps that no longer match their rule.
+* **Mechanization in Lean.** In the desktop app, Claude Code translates the
+  definitions into Lean 4 and proves lemmas on request, following the written
+  proof. The app builds the result itself, and reports where the Lean text had
+  to deviate from yours and which blocks disagree.
 * **Macros and references.** Define `\ty{\Gamma}{e}{\tau}` once and use it
   everywhere; `[[lem:canonical]]` becomes "Lemma 1" and `[[T-App]]` a rule name.
 * **Your files stay yours.** Documents are saved in the browser and as plain
@@ -92,6 +96,8 @@ Source layout:
 * `src/export` — prose format, Typst and LaTeX exporters
 * `src/check` — document checks, their arrangement for the Tracker tab, and the
   command-line entry
+* `src/lean` — mechanization: what is out of date, the job prompts, reading a
+  build into statuses, proposed edits, and the Lean tab's state
 * `mod/proof-tracker` — the Claude Code plugin
 * `src/components` — the editor UI (React)
 * `src/preview` — Typst compiler worker and SVG preview. The preview is updated
@@ -99,7 +105,9 @@ Source layout:
   patched instead of redrawn
 * `electron` — desktop shell: window, menu, native file dialogs (`main.cjs`),
   the folder a window works in (`workspace.cjs`), watching a file for outside
-  changes (`watch.cjs`), and the `window.desktop` bridge (`preload.cjs`)
+  changes (`watch.cjs`), the `window.desktop` bridge (`preload.cjs`), and running
+  Claude Code and Lake for a document's Lean folder (`lean.cjs`, with the
+  agent's instructions in `lean-instructions.md`)
 * `public/fonts` — New Computer Modern (text and math) and DejaVu Sans Mono, from
   [typst-assets](https://github.com/typst/typst-assets)
 

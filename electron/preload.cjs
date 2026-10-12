@@ -23,6 +23,21 @@ contextBridge.exposeInMainWorld('desktop', {
     trash: (path) => ipcRenderer.invoke('workspace-trash', path),
     reveal: (path) => ipcRenderer.invoke('workspace-reveal', path),
   },
+  lean: {
+    tools: () => ipcRenderer.invoke('lean-tools'),
+    open: (docPath) => ipcRenderer.invoke('lean-open', docPath),
+    run: (job) => ipcRenderer.invoke('lean-run', job),
+    cancel: () => ipcRenderer.invoke('lean-cancel'),
+    build: (docPath, keep) => ipcRenderer.invoke('lean-build', { docPath, keep }),
+    writeStatus: (docPath, status) => ipcRenderer.invoke('lean-write-status', { docPath, status }),
+    recreate: (docPath) => ipcRenderer.invoke('lean-recreate', docPath),
+    reveal: (docPath) => ipcRenderer.invoke('lean-reveal', docPath),
+    onEvent: (cb) => {
+      const h = (_e, f) => cb(f);
+      ipcRenderer.on('lean-event', h);
+      return () => ipcRenderer.removeListener('lean-event', h);
+    },
+  },
   onMenu: (cb) => {
     const h = (_e, channel) => cb(channel);
     ipcRenderer.on('menu', h);
