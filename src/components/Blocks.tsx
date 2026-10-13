@@ -125,6 +125,7 @@ let clearDropMark: (() => void) | null = null;
 function BlockFrame({ block, index, count, nested }: { block: Block; index: number; count: number; nested?: boolean }) {
   const update = useStore((s) => s.update);
   const selected = useStore((s) => s.selectedBlock === block.id);
+  const found = useStore((s) => s.foundBlock === block.id);
   const selectBlock = useStore((s) => s.selectBlock);
   // dragging by the grip (or the type label) moves the block; `drop` is where a dragged block would land here
   const frame = useRef<HTMLElement>(null);
@@ -192,7 +193,7 @@ function BlockFrame({ block, index, count, nested }: { block: Block; index: numb
     <section
       id={'block-' + block.id}
       ref={frame}
-      className={`block block-${block.type}` + (selected ? ' selected' : '') + (nested ? ' nested' : '') + (drop ? ' drop-' + drop : '')}
+      className={`block block-${block.type}` + (selected ? ' selected' : '') + (found ? ' found' : '') + (nested ? ' nested' : '') + (drop ? ' drop-' + drop : '')}
       onMouseDown={() => { if (!selected) selectBlock(block.id); }}
       onDragOver={onDragOver}
       onDragLeave={(e) => { if (drop && !e.currentTarget.contains(e.relatedTarget as Node | null)) mark(null); }}

@@ -13,6 +13,7 @@ import { externalChange } from './util/external';
 import { loadFile } from './util/files';
 import { canSaveToFile, pickFileToOpen, saveToFile, useJustSaved, useSaveFileName } from './util/browserFiles';
 import { GitHubDialog } from './components/GitHubDialog';
+import { EditorFind, FindButton } from './components/FindBar';
 import type { Doc } from './model/types';
 import { VIEWS, dockedViews, gridColumns, hasSplitter, minWidth, openCount } from './model/layout';
 import { dockPreview, focusPreviewWindow, previewSlot } from './util/detach';
@@ -80,9 +81,18 @@ export default function App() {
       } else if (mod && e.key.toLowerCase() === 'o' && (desktop || canSaveToFile())) {
         e.preventDefault();
         openDoc();
+      } else if (mod && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        // search the pane last worked in, or the one that is there to search
+        const { views, previewDetached, openFind } = useStore.getState();
+        openFind(!views.editor ? 'preview' : !views.preview || previewDetached ? 'editor' : lastPane);
       }
     };
+    let lastPane: 'editor' | 'preview' = 'editor';
+    const onPane = (e: Event) => { lastPane = (e.target as Element | null)?.closest?.('.preview') ? 'preview' : 'editor'; };
     window.addEventListener('keydown', onKey);
+    window.addEventListener('mousedown', onPane, true);
+    window.addEventListener('focusin', onPane);
     // In the desktop app, the File menu and "Open with" route here.
     const offMenu = desktop?.onMenu((c) => (c === 'open' ? openDoc() : saveDoc(c === 'save-as')));
     desktop?.pendingOpen().then((f) => f && loadFile(f.text, f.path));
@@ -113,7 +123,7 @@ export default function App() {
       setDiskChange(null);
       follow();
     });
-    return () => { window.removeEventListener('keydown', onKey); offMenu?.(); offChanged?.(); offDoc(); };
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mousedown', onPane, true); window.removeEventListener('focusin', onPane); offMenu?.(); offChanged?.(); offDoc(); };
   }, []);
 
   // Desktop: which file the document is in, whether it has edits not yet saved there, and saving by itself.
@@ -174,6 +184,7 @@ export default function App() {
         <button className="theme-toggle" onClick={cycleTheme} title={`Theme: ${theme} (click to change)`} aria-label={`Theme: ${theme}`}><Icon name={THEME_ICON[theme]} /></button>
         <button onClick={() => useStore.getState().undo()} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo (Ctrl+Z)"><Icon name="undo" /></button>
         <button onClick={() => useStore.getState().redo()} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo (Ctrl+Shift+Z)"><Icon name="redo" /></button>
+        <FindButton where="editor" />
         <button onClick={() => (desktop || canSaveToFile() ? openDoc() : fileInput.current?.click())} title="Open a .json document, or import a Typst .typ file (Ctrl+O)" aria-label="Open a document">Open…</button>
         <input ref={fileInput} type="file" accept=".json,.typ,application/json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = ''; }} />
         {desktop || !canSaveToFile()
@@ -223,7 +234,10 @@ export default function App() {
             <button onClick={() => { markDiskSeen(diskChange.docId, diskChange.text); setDiskChange(null); }} title="Keep editing; saving will overwrite the file">Keep mine</button>
           </div>
         )}
-        <SectionTabs />
+        <div className="editor-top">
+          <EditorFind />
+          <SectionTabs />
+        </div>
         <div className="editor-inner">
           {current
             ? <BlockList blocks={doc.blocks.slice(current.start, current.end)} offset={current.start} total={doc.blocks.length} />

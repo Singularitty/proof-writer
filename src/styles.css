@@ -520,3 +520,24 @@ body.detached .preview { border-left: none; }
 /* in a narrow window of its own, the toolbar wraps so the button that puts it back stays in reach */
 .preview-bar { flex-wrap: wrap; }
 .view-toggles > button.detached { border-style: dashed; color: var(--accent); }
+
+/* search: a bar over the editor and one over the preview */
+.editor-top { position: sticky; top: 0; z-index: 6; }
+.editor-top .section-tabs { position: static; }
+.find { background: var(--surface); border-bottom: 1px solid var(--line); }
+.find-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 5px 8px; background: var(--surface); }
+.preview > .find-bar { border-bottom: 1px solid var(--line); }
+.find-bar .mini { padding: 2px 7px; font-size: 12px; }
+.find-query { flex: 0 1 240px; min-width: 110px; font: inherit; font-size: 13px; padding: 3px 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); }
+.find-query:focus { border-color: var(--accent); outline: none; }
+.find-count { min-width: 62px; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.find-count.none { color: var(--danger); }
+.find-excerpt { padding: 0 10px 5px; font-family: var(--mono); font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.find-excerpt mark, pre.code mark { background: #ffd84d; color: #1b1b1b; border-radius: 2px; }
+pre.code mark.current { background: #ff9a2e; }
+/* the block holding the current match; a block the bars would cover stops short of them */
+.block { scroll-margin-top: 110px; }
+.block.found > .block-body, .block.nested.found > .block-body { border-color: #e0a800; box-shadow: 0 0 0 3px rgba(255, 200, 0, 0.28); }
+/* matches in the PDF are tinted where they are drawn; the paper is white in both themes */
+.find-hit { position: absolute; z-index: 2; pointer-events: none; background: #ffd400; opacity: 0.45; mix-blend-mode: multiply; border-radius: 1px; }
+.find-hit.current { background: #ff8a00; opacity: 0.65; }

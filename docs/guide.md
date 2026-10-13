@@ -87,6 +87,22 @@ side conditions. Open goals are underlined in orange and counted in the toolbar.
 `[[lem:canonical]]` references a lemma by its label ("Lemma 1"); `[[T-App]]`
 typesets a rule name in small caps. Typing `[[` autocompletes.
 
+### Searching
+
+Ctrl+F searches the pane you last worked in; each pane also has a magnifier
+button. Enter goes to the next match, Shift+Enter to the previous one, **Aa**
+matches case, and Esc closes the bar.
+
+In the editor the search reads what you wrote, in every section and inside
+collapsed proofs: prose, LaTeX math, rule names, proof trees, raw code. So
+`\Gamma` finds Γ. The block holding the current match is outlined, and the bar
+shows the text around it. **Replace…** adds a second row: **Replace** changes
+the current match, and **Replace all** changes every one in a single undo step.
+
+In the preview the search reads the drawn document, formulas included: `Bool`
+finds the word in a rule as well as in a sentence. On the Typst and LaTeX tabs
+it searches the source shown.
+
 ## Your documents
 
 Documents are saved in the browser as you type (local storage, per browser and

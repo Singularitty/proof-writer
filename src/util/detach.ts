@@ -57,6 +57,8 @@ function mirrorLook(to: Document): () => void {
 /** Undo, redo, save and open are handled by the main window; pass them on from the other one. */
 function passShortcut(e: KeyboardEvent) {
   if (!e.ctrlKey && !e.metaKey) return;
+  // searching from this window searches what it shows
+  if (e.key.toLowerCase() === 'f') { e.preventDefault(); useStore.getState().openFind('preview'); return; }
   const copy = new KeyboardEvent('keydown', { key: e.key, code: e.code, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, altKey: e.altKey, cancelable: true });
   if (!window.dispatchEvent(copy)) e.preventDefault();
 }

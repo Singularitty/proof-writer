@@ -10,6 +10,9 @@ import { download, slug } from '../util/download';
 import { desktop } from '../util/desktop';
 import { Icon } from '../components/Icon';
 import { attachPreview, detachPreview } from '../util/detach';
+import { FindBar, FindButton } from '../components/FindBar';
+import { literal } from '../model/search';
+import { drawnRuns, findInRuns, segmentBox, type Box } from './find';
 
 type Tab = 'pdf' | 'typst' | 'latex';
 
@@ -107,6 +110,64 @@ export function Preview() {
     setMark({ n: target.n, top, left: g.r.left - b.left + box.scrollLeft, width: g.r.width, height: Math.max(16, (span.end - span.y) * g.scale) });
   }, [target, tab, drawn]); // eslint-disable-line
 
+  const warnings = [...typst.warnings, ...(latex?.warnings ?? [])];
+  const code = tab === 'typst' ? typst.source : tab === 'latex' ? latex?.source ?? '' : '';
+
+  // Search: over the drawn text on the PDF tab, over the source on the others.
+  const finding = useStore((s) => s.find.preview);
+  const [query, setQuery] = useState('');
+  const [matchCase, setMatchCase] = useState(false);
+  const [at, setAt] = useState(0);
+  /** Set when the current match should be scrolled to, which an edit elsewhere should not do. */
+  const follow = useRef(false);
+  const [pdfHits, setPdfHits] = useState<Box[][]>([]);
+  /** Counts changes of the preview's width, which move everything drawn in it. */
+  const [resized, setResized] = useState(0);
+  useEffect(() => {
+    const box = wrap.current;
+    if (!finding || tab !== 'pdf' || !box) return;
+    const seen = new ResizeObserver(() => setResized((n) => n + 1));
+    seen.observe(box);
+    return () => seen.disconnect();
+  }, [finding, tab]);
+  // coming to a tab, its current match is brought into view
+  useEffect(() => { follow.current = true; }, [tab]);
+  useEffect(() => {
+    const box = wrap.current;
+    if (!finding || tab !== 'pdf' || !query || !box || !livePages) { setPdfHits((h) => (h.length ? [] : h)); return; }
+    const runs = drawnRuns(livePages);
+    const b = box.getBoundingClientRect();
+    const origin = { x: b.left - box.scrollLeft, y: b.top - box.scrollTop };
+    setPdfHits(findInRuns(runs, query, matchCase).map((m) => m.map((s) => segmentBox(runs[s.run], s, origin))));
+  }, [finding, tab, query, matchCase, drawn, resized, detached]);
+  const codeHits = useMemo(
+    () => (finding && tab !== 'pdf' && query ? [...code.matchAll(literal(query, matchCase))].map((m) => ({ start: m.index, end: m.index + m[0].length })) : []),
+    [finding, tab, query, matchCase, code],
+  );
+  const count = tab === 'pdf' ? pdfHits.length : codeHits.length;
+  const current = count ? Math.min(at, count - 1) : -1;
+  const codeBox = useRef<HTMLPreElement>(null);
+  useEffect(() => {
+    if (!follow.current || current < 0) return;
+    follow.current = false;
+    if (tab !== 'pdf') { codeBox.current?.querySelector('mark.current')?.scrollIntoView({ block: 'center' }); return; }
+    const first = pdfHits[current][0];
+    wrap.current?.scrollTo({ top: Math.max(0, first.top - 120), behavior: 'smooth' });
+  }, [pdfHits, codeHits, current]); // eslint-disable-line
+  const search = (q: string, mc: boolean) => { setQuery(q); setMatchCase(mc); setAt(0); follow.current = true; };
+  const step = (by: 1 | -1) => { if (count) { setAt((current + by + count) % count); follow.current = true; } };
+  /** The source with its matches marked. */
+  const marked = () => {
+    const out: React.ReactNode[] = [];
+    let from = 0;
+    codeHits.forEach((h, i) => {
+      out.push(code.slice(from, h.start), <mark key={i} className={i === current ? 'current' : undefined}>{code.slice(h.start, h.end)}</mark>);
+      from = h.end;
+    });
+    out.push(code.slice(from));
+    return out;
+  };
+
   const name = slug(doc.title);
   const downloadPdf = async () => {
     const r = await compilePdf(exportTypst(doc).source);
@@ -126,9 +187,6 @@ export function Preview() {
     const url = URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' }));
     if (w) w.location.href = url;
   };
-
-  const warnings = [...typst.warnings, ...(latex?.warnings ?? [])];
-  const code = tab === 'typst' ? typst.source : tab === 'latex' ? latex?.source ?? '' : '';
 
   return (
     <div className="preview">
@@ -152,10 +210,18 @@ export function Preview() {
             <button onClick={() => download(`${name}.${tab === 'typst' ? 'typ' : 'tex'}`, code, 'text/plain')}>⤓ .{tab === 'typst' ? 'typ' : 'tex'}</button>
           </>
         )}
+        <FindButton where="preview" />
         {detached
           ? <button onClick={attachPreview} title="Put the preview back in the main window" aria-label="Put the preview back in the main window"><Icon name="attach" /></button>
           : <button onClick={detachPreview} title="Move the preview to a window of its own" aria-label="Move the preview to a window of its own"><Icon name="detach" /></button>}
       </div>
+      {finding > 0 && (
+        <FindBar
+          query={query} onQuery={(q) => search(q, matchCase)} matchCase={matchCase} onMatchCase={(mc) => search(query, mc)}
+          count={count} current={current} onStep={step} onClose={() => useStore.getState().closeFind('preview')}
+          focus={finding} placeholder={tab === 'pdf' ? 'Find in the PDF' : `Find in the ${tab === 'typst' ? 'Typst' : 'LaTeX'} source`}
+        />
+      )}
       {tab === 'pdf' && (
         <div className="pdf-wrap" ref={wrap}>
           <div className={'status ' + status.state}>{status.msg}</div>
@@ -166,10 +232,11 @@ export function Preview() {
             </div>
           )}
           {mark && <div key={mark.n} className="pdf-mark" style={{ top: mark.top, left: mark.left, width: mark.width, height: mark.height }} onAnimationEnd={() => setMark(null)} />}
+          {pdfHits.map((hit, i) => hit.map((b, k) => <div key={i + '.' + k} className={'find-hit' + (i === current ? ' current' : '')} style={b} />))}
           <div ref={host} onClick={goToSource} title="Click to go to that part of the document" />
         </div>
       )}
-      {tab !== 'pdf' && <pre className="code">{code}</pre>}
+      {tab !== 'pdf' && <pre className="code" ref={codeBox}>{codeHits.length ? marked() : code}</pre>}
       {warnings.length > 0 && (
         <div className="warnings">
           {[...new Set(warnings)].slice(0, 8).map((w, i) => <div key={i}>⚠ {w}</div>)}

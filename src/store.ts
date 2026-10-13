@@ -90,6 +90,13 @@ interface State {
   previewDetached: boolean;
   setPreviewDetached: (d: boolean) => void;
   setGithubDialog: (m: 'open' | 'commit' | null) => void;
+  /** The search of each pane: 0 while closed, otherwise a number that changes each time it is asked for. */
+  find: { editor: number; preview: number };
+  openFind: (where: 'editor' | 'preview') => void;
+  closeFind: (where: 'editor' | 'preview') => void;
+  /** The block holding the match the editor's search is on. */
+  foundBlock: string | null;
+  setFoundBlock: (id: string | null) => void;
 
   update: (f: (d: Draft<Doc>) => void, editKey?: string) => void;
   undo: () => void;
@@ -177,6 +184,15 @@ export const useStore = create<State>((set, get) => ({
   // coming back, the preview is shown: it was on screen a moment ago
   setPreviewDetached: (d) => set({ previewDetached: d, views: keepViews(d ? makeRoomToDetach(get().views) : showView(get().views, 'preview')) }),
   setGithubDialog: (m) => set({ githubDialog: m }),
+  find: { editor: 0, preview: 0 },
+  // a collapsed pane opens to be searched
+  openFind: (where) => set({
+    find: { ...get().find, [where]: Math.max(get().find.editor, get().find.preview) + 1 },
+    views: where === 'preview' && get().previewDetached ? get().views : keepViews(showView(get().views, where)),
+  }),
+  closeFind: (where) => set({ find: { ...get().find, [where]: 0 } }),
+  foundBlock: null,
+  setFoundBlock: (id) => { if (get().foundBlock !== id) set({ foundBlock: id }); },
 
   update: (f, editKey) => {
     const { doc, past, lastEditKey, lastEditTime, docId, index } = get();
