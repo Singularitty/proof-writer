@@ -7,6 +7,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { watchFile } = require('./watch.cjs');
 const workspace = require('./workspace.cjs');
+const git = require('./git.cjs');
 
 const DIST = path.join(__dirname, '..', 'dist');
 
@@ -157,6 +158,12 @@ ipcMain.handle('workspace-rename', (e, { path: p, name }) => workspace.renameFil
 // To the system's trash, where it can be recovered; never deleted outright.
 ipcMain.handle('workspace-trash', (e, p) => shell.trashItem(workspace.mustBeInside(rootOf(e), p)));
 ipcMain.handle('workspace-reveal', (e, p) => { shell.showItemInFolder(workspace.mustBeInside(rootOf(e), p)); });
+
+// Version control for that folder, with the system's git.
+ipcMain.handle('git-status', (e) => git.status(rootOf(e)));
+ipcMain.handle('git-commit', (e, { message, paths }) => git.commit(rootOf(e), message, Array.isArray(paths) ? paths.map(String) : []));
+ipcMain.handle('git-pull', (e) => git.pull(rootOf(e)));
+ipcMain.handle('git-push', (e) => git.push(rootOf(e)));
 
 // "Open PDF": write to a temp file and hand it to the system viewer.
 ipcMain.handle('open-pdf', async (_e, { name, data }) => {

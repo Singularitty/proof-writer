@@ -23,6 +23,12 @@ contextBridge.exposeInMainWorld('desktop', {
     trash: (path) => ipcRenderer.invoke('workspace-trash', path),
     reveal: (path) => ipcRenderer.invoke('workspace-reveal', path),
   },
+  git: {
+    status: () => ipcRenderer.invoke('git-status'),
+    commit: (message, paths) => ipcRenderer.invoke('git-commit', { message, paths }),
+    pull: () => ipcRenderer.invoke('git-pull'),
+    push: () => ipcRenderer.invoke('git-push'),
+  },
   onMenu: (cb) => {
     const h = (_e, channel) => cb(channel);
     ipcRenderer.on('menu', h);

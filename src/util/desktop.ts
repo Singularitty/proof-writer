@@ -34,7 +34,22 @@ export interface DesktopBridge {
     trash(path: string): Promise<void>;
     reveal(path: string): Promise<void>;
   };
+  /** Version control for the open folder, run with the system's git. Each resolves to the state afterwards. */
+  git: {
+    status(): Promise<GitStatus>;
+    /** Commits these changed files, named as `status` names them. */
+    commit(message: string, paths: string[]): Promise<GitStatus>;
+    pull(): Promise<GitStatus>;
+    push(): Promise<GitStatus>;
+  };
 }
+
+/** A file git sees as changed; `path` is relative to the top of the repository. */
+export interface GitFile { path: string; from?: string; state: 'new' | 'modified' | 'deleted' | 'renamed' | 'conflict' }
+/** How the open folder stands in git, if it is a repository at all. */
+export type GitStatus =
+  | { repo: false; /** Git itself is not installed. */ missing?: boolean }
+  | { repo: true; top: string; branch: string; /** The remote branch this one follows, or ''. */ upstream: string; remote: string; ahead: number; behind: number; files: GitFile[] };
 
 declare global {
   interface Window { desktop?: DesktopBridge }

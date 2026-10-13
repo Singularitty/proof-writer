@@ -241,6 +241,24 @@ If another program changes the file, the document is reloaded. If you have
 edits that are not saved, the app asks whether to reload or keep yours. When a
 document is opened, it is checked against its file in the same way.
 
+### Git
+
+If the folder is in a git repository, the Files tab shows its branch under the
+file list, with every changed file in the folder. Untick the ones to leave out,
+write what changed, and **Commit**. Files outside the open folder are never
+touched, even if the repository is larger.
+
+**Push** sends your commits to the remote and **Pull** brings in new ones; `↑`
+and `↓` count what is waiting each way. A pull only fast-forwards: if both
+sides have new commits, it says so and leaves the merge to a terminal. A
+document that a pull changes is reloaded like any other outside change.
+
+This is the git already on your computer, run the way a terminal would run it,
+so it uses the repository's remote and your own SSH setup; the app holds no
+account, token or key. It cannot answer a prompt, though: a key with a
+passphrase must be loaded in your `ssh-agent`, and a host met for the first
+time must be accepted in a terminal once.
+
 Below the folder, **Open documents** lists everything the app has open, with
 the file each is in. One marked *not in a file* exists only inside the app
 until you save it. Closing a document that is in a file leaves the file alone.

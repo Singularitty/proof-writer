@@ -3,6 +3,7 @@ import { hasUnsavedEdits, useStore } from '../store';
 import { desktop, fileName, setDocFilePath, type FolderEntry, type FolderListing } from '../util/desktop';
 import { loadFile } from '../util/files';
 import { emptyDoc } from '../model/sample';
+import { Git } from './Git';
 
 const FOLDER_KEY = 'proof-writer:workspace';
 
@@ -14,7 +15,7 @@ function remember(dir: string | null) {
 }
 
 /** Listeners that want the listing read again (a file was saved, created, renamed or removed). */
-const refreshers = new Set<() => void>();
+export const refreshers = new Set<() => void>();
 export const refreshFiles = () => refreshers.forEach((f) => f());
 
 /** Desktop: the folder being worked in. Its documents open with a click and can be created, renamed and trashed here. */
@@ -137,6 +138,7 @@ export function Files() {
         })}
         {listing.entries.length === 0 && <li className="dim">No documents in this folder yet.</li>}
       </ul>
+      <Git root={listing.root} />
     </div>
   );
 }
