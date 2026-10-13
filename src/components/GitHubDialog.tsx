@@ -5,10 +5,9 @@ import { slug } from '../util/download';
 import { exportTypst } from '../export/typst';
 import { exportLatex } from '../export/latex';
 import {
-  authToken, commitFile, defaultBranch, getFile, githubSession, githubToken, lastRepo, listBranches, listDocFiles, parseRepo, whoAmI,
+  commitFile, defaultBranch, getFile, githubToken, lastRepo, listBranches, listDocFiles, parseRepo,
   type GitHubSource, type RepoFile,
 } from '../util/github';
-import type { DeviceCode } from '../util/desktop';
 
 type Mode = 'open' | 'commit';
 type Format = 'json' | 'typst' | 'latex';
@@ -19,7 +18,7 @@ const TOKEN_HELP = 'https://github.com/settings/personal-access-tokens/new';
 export function GitHubDialog({ mode: initialMode, onClose }: { mode: Mode; onClose: () => void }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [token, setToken] = useState(githubToken.get());
-  const [showToken, setShowToken] = useState(!!githubToken.get() || (initialMode === 'commit' && !githubSession.available()));
+  const [showToken, setShowToken] = useState(!!githubToken.get() || initialMode === 'commit');
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -38,9 +37,8 @@ export function GitHubDialog({ mode: initialMode, onClose }: { mode: Mode; onClo
           <button className="mini" onClick={onClose} aria-label="Close">✕</button>
         </div>
         {mode === 'open' ? <OpenPane onDone={onClose} /> : <CommitPane />}
-        {githubSession.available() && <SignIn />}
         <details className="gh-token" open={showToken} onToggle={(e) => setShowToken((e.target as HTMLDetailsElement).open)}>
-          <summary>{token ? 'Access token (saved in this browser)' : githubSession.available() ? 'Or use an access token' : 'Access token (for private repositories and commits)'}</summary>
+          <summary>{token ? 'Access token (saved in this browser)' : 'Access token (for private repositories and commits)'}</summary>
           <div className="gh-row">
             <input
               type="password" value={token} placeholder="github_pat_…" autoComplete="off" spellCheck={false}
@@ -55,75 +53,6 @@ export function GitHubDialog({ mode: initialMode, onClose }: { mode: Mode; onClo
           </p>
         </details>
       </div>
-    </div>
-  );
-}
-
-/** Desktop: signing in through the browser, in place of pasting a token. */
-function SignIn() {
-  /** The account signed in: undefined while unknown, null for none, '' when GitHub would not say. */
-  const [login, setLogin] = useState<string | null | undefined>(undefined);
-  const [code, setCode] = useState<DeviceCode | null>(null);
-  const [waiting, setWaiting] = useState(false);
-  const [error, setError] = useState('');
-  const who = () => whoAmI().then(setLogin, () => setLogin(''));
-
-  useEffect(() => {
-    void githubSession.load().then((t) => (t ? who() : setLogin(null)));
-    // a sign-in left waiting has nowhere to report to
-    return () => githubSession.cancel();
-  }, []); // eslint-disable-line
-
-  const signIn = async () => {
-    setWaiting(true); setError(''); setCode(null);
-    try {
-      const ok = await githubSession.signIn((c) => {
-        setCode(c);
-        navigator.clipboard?.writeText(c.userCode).catch(() => { /* the code is on screen to type */ });
-      });
-      if (ok) await who();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setWaiting(false); setCode(null);
-    }
-  };
-
-  if (login === undefined) return null;
-  return (
-    <div className="gh-signin">
-      {login !== null ? (
-        <div className="gh-row">
-          <span className="grow">Signed in{login ? <> as <strong>{login}</strong></> : ''}</span>
-          <button onClick={() => { void githubSession.signOut(); setLogin(null); }}>Sign out</button>
-        </div>
-      ) : waiting ? (
-        <>
-          {code ? (
-            <>
-              <p>Enter this code on the GitHub page that just opened in your browser:</p>
-              <div className="gh-row">
-                <code className="gh-code">{code.userCode}</code>
-                <span className="grow" />
-                <a href={code.verificationUri} target="_blank" rel="noreferrer">Open the page again</a>
-                <button onClick={() => githubSession.cancel()}>Cancel</button>
-              </div>
-              <p className="help">The code is on the clipboard. This closes by itself once GitHub has your answer.</p>
-            </>
-          ) : <p className="help">Asking GitHub for a code…</p>}
-        </>
-      ) : (
-        <>
-          <div className="gh-row">
-            <button className="primary" onClick={signIn}>Sign in with GitHub</button>
-          </div>
-          <p className="help">
-            For private repositories and commits. It gives this app access to your repositories; the sign-in is kept on this computer
-            and sent only to github.com. To take the access away again, revoke the app under Applications in your GitHub settings.
-          </p>
-        </>
-      )}
-      {error && <p className="gh-error">{error}</p>}
     </div>
   );
 }
@@ -234,7 +163,7 @@ function CommitPane() {
     if (!ref) return;
     setBusy(true); setError(''); setDone(null);
     try {
-      if (!authToken()) throw new Error(githubSession.available() ? 'Sign in to commit (below).' : 'Committing needs an access token (below).');
+      if (!githubToken.get()) throw new Error('Committing needs an access token (below).');
       const br = branch || ref.branch || (await defaultBranch(ref.owner, ref.repo));
       const text = format === 'json' ? JSON.stringify(doc, null, 2) : format === 'typst' ? exportTypst(doc).source : exportLatex(doc).source;
       const target = { owner: ref.owner, repo: ref.repo, branch: br, path: path.replace(/^\/+/, '') };

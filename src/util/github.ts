@@ -1,9 +1,6 @@
 // Minimal GitHub REST client for opening and committing documents from the browser.
-// Public repositories work without a token; private ones and commits need one:
-// the desktop app gets it by signing in, and anywhere a personal access token can
-// be pasted, which is kept only in this browser's storage.
-
-import type { DesktopBridge, DeviceCode } from './desktop';
+// Public repositories work without a token; private ones and commits need a
+// personal access token, which is kept only in this browser's storage.
 
 export interface RepoRef { owner: string; repo: string; branch?: string; path?: string }
 export interface GitHubSource { owner: string; repo: string; branch: string; path: string; sha?: string }
@@ -16,51 +13,6 @@ export const githubToken = {
   get: (): string => { try { return localStorage.getItem(TOKEN_KEY) ?? ''; } catch { return ''; } },
   set: (t: string) => { try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } },
 };
-/**
- * Client ID of the GitHub OAuth app the desktop app signs in through. It is public by design; the app must have
- * "Enable Device Flow" ticked. While this is empty there is no sign-in, only the pasted token.
- */
-export const GITHUB_CLIENT_ID = '';
-
-// read from the window, not util/desktop, which this file must not load: the store uses both
-const bridge = (): DesktopBridge['github'] | undefined => (typeof window !== 'undefined' ? window.desktop?.github : undefined);
-/** The token from signing in. The app keeps it; this is the page's copy. */
-let signedIn = '';
-const reason = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error invoking remote method '[^']*': (Error: )?/, '');
-
-export const githubSession = {
-  available: () => !!bridge() && !!GITHUB_CLIENT_ID,
-  /** Picks up a sign-in from an earlier run or another window. */
-  load: async (): Promise<string> => {
-    signedIn = (await bridge()?.token().catch(() => '')) ?? '';
-    return signedIn;
-  },
-  /** Signs in; `onCode` is given the code to enter on GitHub. False if it was cancelled. */
-  signIn: async (onCode: (c: DeviceCode) => void): Promise<boolean> => {
-    const gh = bridge();
-    if (!gh) return false;
-    const off = gh.onCode(onCode);
-    try {
-      signedIn = (await gh.signIn(GITHUB_CLIENT_ID)) ?? '';
-      return !!signedIn;
-    } catch (e) {
-      throw new Error(reason(e));
-    } finally {
-      off();
-    }
-  },
-  cancel: () => { void bridge()?.cancel(); },
-  /** Forgets the token here. The app's access stays listed on GitHub until revoked there. */
-  signOut: async () => { signedIn = ''; await bridge()?.signOut(); },
-};
-void githubSession.load();
-
-/** The token requests are sent with: the sign-in's, or else the pasted one. */
-export const authToken = (): string => signedIn || githubToken.get();
-
-/** The account the token belongs to. */
-export const whoAmI = async (): Promise<string> => (await api<{ login: string }>('/user')).login;
-
 export const lastRepo = {
   get: (): string => { try { return localStorage.getItem(LAST_REPO_KEY) ?? ''; } catch { return ''; } },
   set: (r: string) => { try { localStorage.setItem(LAST_REPO_KEY, r); } catch { /* ignore */ } },
@@ -82,7 +34,7 @@ export class GitHubError extends Error {
 }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = authToken();
+  const token = githubToken.get();
   const res = await fetch('https://api.github.com' + path, {
     ...init,
     headers: {
@@ -95,9 +47,9 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     let msg = res.statusText;
     try { msg = ((await res.json()) as { message?: string }).message ?? msg; } catch { /* ignore */ }
-    if (res.status === 404) msg = token ? 'Not found (check the name, or that your account or token can read this repository)' : 'Not found. If the repository is private, sign in or add a token.';
-    if (res.status === 401) msg = signedIn ? 'GitHub no longer accepts this sign-in. Sign out and in again.' : 'The token was rejected. Check it or create a new one.';
-    if (res.status === 403 && /rate limit/i.test(msg)) msg = 'GitHub rate limit reached. Sign in or add a token to raise it.';
+    if (res.status === 404) msg = token ? 'Not found (check the name, or that your token can read this repository)' : 'Not found. If the repository is private, add a token.';
+    if (res.status === 401) msg = 'The token was rejected. Check it or create a new one.';
+    if (res.status === 403 && /rate limit/i.test(msg)) msg = 'GitHub rate limit reached. Add a token to raise it.';
     throw new GitHubError(msg, res.status);
   }
   return res.json() as Promise<T>;

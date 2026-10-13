@@ -34,19 +34,7 @@ export interface DesktopBridge {
     trash(path: string): Promise<void>;
     reveal(path: string): Promise<void>;
   };
-  /** Signing in to GitHub; the token is kept by the app, not the page, and shared by its windows. */
-  github: {
-    /** Starts a sign-in; `onCode` hears the code to enter. Resolves to the token, or null if cancelled. */
-    signIn(clientId: string): Promise<string | null>;
-    cancel(): Promise<void>;
-    /** The token from the last sign-in, or ''. */
-    token(): Promise<string>;
-    signOut(): Promise<void>;
-    onCode(cb: (c: DeviceCode) => void): () => void;
-  };
 }
-/** What to enter on GitHub to finish signing in, and where. */
-export interface DeviceCode { userCode: string; verificationUri: string }
 
 declare global {
   interface Window { desktop?: DesktopBridge }
