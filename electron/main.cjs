@@ -1,12 +1,13 @@
 // Electron shell for Proof Writer: serves the Vite build from an app:// origin
 // (file:// breaks module workers and wasm fetches) and exposes native file dialogs.
-const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, shell, net } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, safeStorage, shell, net } = require('electron');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { watchFile } = require('./watch.cjs');
 const workspace = require('./workspace.cjs');
+const github = require('./github.cjs');
 
 const DIST = path.join(__dirname, '..', 'dist');
 
@@ -166,6 +167,52 @@ ipcMain.handle('open-pdf', async (_e, { name, data }) => {
   if (err) throw new Error(err);
   return p;
 });
+
+// ---------- signing in to GitHub ----------
+// The token is kept encrypted with the system's keychain where there is one, and
+// otherwise only for as long as the app runs. Every window shares it.
+const tokenFile = () => path.join(app.getPath('userData'), 'github-token');
+let githubToken = null;
+async function readToken() {
+  if (githubToken !== null) return githubToken;
+  try { githubToken = safeStorage.decryptString(await fs.readFile(tokenFile())); } catch { githubToken = ''; }
+  return githubToken;
+}
+async function keepToken(token) {
+  githubToken = token;
+  if (!token) await fs.rm(tokenFile(), { force: true });
+  else if (safeStorage.isEncryptionAvailable()) await fs.writeFile(tokenFile(), safeStorage.encryptString(token), { mode: 0o600 });
+}
+
+/** The sign-in each window has under way. */
+const signIns = new Map();
+// Resolves to the token, or null when the window cancelled.
+ipcMain.handle('github-sign-in', async (e, clientId) => {
+  if (typeof clientId !== 'string' || !/^[\w.]{8,64}$/.test(clientId)) throw new Error('Signing in is not set up: the app has no GitHub client ID.');
+  const sender = e.sender;
+  signIns.get(sender.id)?.abort();
+  const mine = new AbortController();
+  signIns.set(sender.id, mine);
+  try {
+    const token = await github.signIn({ clientId, signal: mine.signal, onCode: (c) => {
+        if (sender.isDestroyed()) return;
+        sender.send('github-code', c);
+        // the page to enter it on, in the system browser
+        if (String(c.verificationUri).startsWith('https://github.com/')) shell.openExternal(c.verificationUri);
+      },
+    });
+    await keepToken(token);
+    return token;
+  } catch (err) {
+    if (mine.signal.aborted) return null;
+    throw err;
+  } finally {
+    if (signIns.get(sender.id) === mine) signIns.delete(sender.id);
+  }
+});
+ipcMain.handle('github-cancel', (e) => { signIns.get(e.sender.id)?.abort(); });
+ipcMain.handle('github-token', readToken);
+ipcMain.handle('github-sign-out', () => keepToken(''));
 
 function buildMenu() {
   const send = (channel) => () => {

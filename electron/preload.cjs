@@ -23,6 +23,17 @@ contextBridge.exposeInMainWorld('desktop', {
     trash: (path) => ipcRenderer.invoke('workspace-trash', path),
     reveal: (path) => ipcRenderer.invoke('workspace-reveal', path),
   },
+  github: {
+    signIn: (clientId) => ipcRenderer.invoke('github-sign-in', clientId),
+    cancel: () => ipcRenderer.invoke('github-cancel'),
+    token: () => ipcRenderer.invoke('github-token'),
+    signOut: () => ipcRenderer.invoke('github-sign-out'),
+    onCode: (cb) => {
+      const h = (_e, c) => cb(c);
+      ipcRenderer.on('github-code', h);
+      return () => ipcRenderer.removeListener('github-code', h);
+    },
+  },
   onMenu: (cb) => {
     const h = (_e, channel) => cb(channel);
     ipcRenderer.on('menu', h);

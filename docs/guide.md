@@ -134,8 +134,18 @@ asks again.
   file, and the commit is refused if the file changed on GitHub since.
 
 Public repositories open without signing in. Private repositories and commits
-need a fine-grained personal access token with *Contents: Read and write*; it
-is stored only in this browser and sent only to `api.github.com`.
+need your account.
+
+In the desktop app, **Sign in with GitHub** opens a GitHub page in your browser
+and shows a short code to enter there; once you approve, the dialog shows the
+account you are signed in as. The sign-in is kept on your computer, in the
+system's keychain where there is one, and lasts until you **Sign out**. To take
+the app's access away altogether, revoke it under *Applications* in your GitHub
+settings.
+
+In the browser, and in the desktop app if you prefer, paste a fine-grained
+personal access token with *Contents: Read and write* instead; it is stored
+only in this browser and sent only to `api.github.com`.
 
 ## Importing Typst
 

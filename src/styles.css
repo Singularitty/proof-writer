@@ -541,3 +541,11 @@ pre.code mark.current { background: #ff9a2e; }
 /* matches in the PDF are tinted where they are drawn; the paper is white in both themes */
 .find-hit { position: absolute; z-index: 2; pointer-events: none; background: #ffd400; opacity: 0.45; mix-blend-mode: multiply; border-radius: 1px; }
 .find-hit.current { background: #ff8a00; opacity: 0.65; }
+
+/* signing in to GitHub from the desktop app */
+.gh-signin { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; font-size: 13px; }
+.gh-signin .gh-row { align-items: center; }
+.gh-signin p { margin: 0 0 8px; }
+.gh-signin .help { color: var(--dim); font-size: 12px; margin: 8px 0 0; }
+.gh-code { font-family: var(--mono); font-size: 22px; letter-spacing: 2px; padding: 4px 12px; border: 1px solid var(--accent-line); border-radius: 6px; background: var(--accent-soft); user-select: all; }
+.gh-signin + .gh-token { margin-top: 10px; }
